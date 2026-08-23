@@ -1,0 +1,7 @@
+{
+  "name": "ARROW",
+  "description": "A confident, minimalist dating and discovery application connecting people through intentional discovery, mutual interest, and direct connections.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

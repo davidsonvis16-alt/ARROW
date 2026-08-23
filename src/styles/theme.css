@@ -1,0 +1,96 @@
+:root {
+  --color-ink: #111111;
+  --color-offwhite: #F5F3EE;
+  --color-stone: #D9D6CF;
+  --color-stone-light: #EBE8E1;
+  --color-stone-dark: #7A766E;
+  --color-surface: #FFFFFF;
+  --color-surface-subtle: #FAF8F4;
+  --color-arrow-orange: #E85D2A;
+  --color-arrow-orange-hover: #D05325;
+  --color-arrow-orange-subtle: #FDF1EB;
+  --color-forest: #17352F;
+  --color-border: #D9D6CF;
+  --color-border-subtle: #E8E5DF;
+  --color-danger: #D9383A;
+  --color-danger-subtle: #FDF0F0;
+  
+  --radius-card: 32px;
+  --radius-card-sm: 20px;
+  --radius-button: 16px;
+  --radius-input: 14px;
+  --radius-pill: 9999px;
+
+  --font-sans: 'Inter', 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --shadow-subtle: 0 4px 20px -2px rgba(17, 17, 17, 0.05);
+  --shadow-card: 0 20px 40px -10px rgba(17, 17, 17, 0.12), 0 8px 16px -4px rgba(17, 17, 17, 0.06);
+  --shadow-modal: 0 24px 48px -8px rgba(17, 17, 17, 0.18);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-offwhite);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  touch-action: manipulation;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-offwhite);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-stone);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-stone-dark);
+}
+
+/* Wordmark styling */
+.brand-wordmark {
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.25rem;
+}
+
+.brand-arrow-badge {
+  width: 24px;
+  height: 24px;
+  background-color: var(--color-arrow-orange);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(45deg);
+  border-radius: 4px;
+  transition: transform 0.25s ease;
+}
+
+.brand-arrow-badge-inner {
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid #FFFFFF;
+  border-right: 2px solid #FFFFFF;
+  transform: rotate(-45deg);
+  margin-left: -2px;
+  margin-top: 2px;
+}
+
+.brand-wordmark:hover .brand-arrow-badge {
+  transform: rotate(45deg) scale(1.08);
+}
+
