@@ -3,7 +3,7 @@ import { UserProfile, Gender } from '../../types';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { calculateAge, isAdult } from '../../services/storageService';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { authService } from '../../services/authService';
 import { profileService } from '../../services/profileService';
 import { useToast } from '../ui/Toast';
@@ -17,6 +17,7 @@ import {
   Lock,
   Mail,
   Key,
+  Chrome,
 } from 'lucide-react';
 
 interface OnboardingFlowProps {
@@ -24,12 +25,7 @@ interface OnboardingFlowProps {
   onCancel?: () => void;
 }
 
-const SAMPLE_PHOTO_PRESETS = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=800&q=80',
-];
+const SAMPLE_PHOTO_PRESETS: string[] = [];
 
 const AVAILABLE_INTERESTS = [
   'Architecture',
@@ -69,6 +65,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  // Google OAuth: if user is already authenticated, skip email/password
+  const [existingAuthUserId, setExistingAuthUserId] = useState<string | null>(null);
+
   // Step 1: Basic Identity & 18+ Age verification
   const [name, setName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -76,9 +75,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const [location, setLocation] = useState('');
 
   // Step 2: Photos
-  const [photos, setPhotos] = useState<string[]>([SAMPLE_PHOTO_PRESETS[0]]);
+  const [photos, setPhotos] = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Step 3: Bio, Looking for & Interests
   const [bio, setBio] = useState('');
@@ -93,9 +93,31 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const calculatedAge = dateOfBirth ? calculateAge(dateOfBirth) : 0;
   const isEligibleAdult = isAdult(dateOfBirth);
 
+  // Check for existing Google OAuth session
+  React.useEffect(() => {
+    if (isSupabaseConfigured) {
+      authService.getCurrentUser().then((user) => {
+        if (user) {
+          setExistingAuthUserId(user.id);
+          setEmail(user.email || '');
+        }
+      });
+    }
+  }, []);
+
+  const handleGoogleSignUp = async () => {
+    setIsSubmitting(true);
+    try {
+      await authService.signInWithGoogle();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to sign in with Google', 'error');
+      setIsSubmitting(false);
+    }
+  };
+
   const handleNextStep = () => {
     if (step === 1) {
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured && !existingAuthUserId) {
         if (!email.trim() || !password.trim()) {
           showToast('Please provide an email and password to secure your profile', 'warning');
           return;
@@ -161,11 +183,22 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        setPhotos([reader.result, ...photos.filter((p) => !SAMPLE_PHOTO_PRESETS.includes(p))]);
+        setPhotos([reader.result, ...photos]);
         showToast('Photo added', 'success');
       }
     };
     reader.readAsDataURL(file);
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+  };
+
+  const handleCameraCapture = () => {
+    cameraInputRef.current?.click();
+  };
+
+  const handleFileSelect = () => {
+    fileInputRef.current?.click();
   };
 
   const toggleInterest = (interest: string) => {
@@ -181,8 +214,73 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const finishOnboarding = async () => {
     setIsSubmitting(true);
     try {
+      if (isSupabaseConfigured && existingAuthUserId) {
+        await supabase.from('arrow_profiles').upsert({
+          id: existingAuthUserId,
+          name: name.trim(),
+          date_of_birth: dateOfBirth,
+          gender,
+          location: location.trim(),
+          bio: bio.trim(),
+          interests,
+          looking_for: lookingFor,
+          allow_whatsapp: Boolean(allowWhatsApp),
+          whatsapp_number: allowWhatsApp ? whatsappNumber.trim() : null,
+          is_verified_adult: false,
+        });
+
+        await supabase.from('arrow_preferences').upsert({
+          user_id: existingAuthUserId,
+          age_min: 18,
+          age_max: 65,
+          gender_preference: ['woman', 'man', 'non-binary'],
+          intentions: ['Meaningful dating'],
+        });
+
+        let uploadedPhotoUrls: string[] = [];
+        for (let i = 0; i < selectedFiles.length; i++) {
+          try {
+            const url = await profileService.uploadProfilePhoto(existingAuthUserId, selectedFiles[i], i);
+            uploadedPhotoUrls.push(url);
+          } catch (uploadErr) {
+            console.warn('Photo upload warning:', uploadErr);
+          }
+        }
+
+        if (uploadedPhotoUrls.length === 0 && photos.length > 0) {
+          uploadedPhotoUrls = photos;
+        }
+
+        const createdProfile: UserProfile = {
+          id: existingAuthUserId,
+          name: name.trim(),
+          dateOfBirth,
+          age: calculatedAge,
+          gender,
+          location: location.trim(),
+          bio: bio.trim(),
+          photos: uploadedPhotoUrls,
+          interests,
+          lookingFor,
+          prompts: [
+            {
+              id: 'p1',
+              question: 'A perfect Sunday looks like...',
+              answer: 'Exploring quiet coffee spots and listening to vinyl records.',
+            },
+          ],
+          allowWhatsApp,
+          whatsappNumber: allowWhatsApp ? whatsappNumber.trim() : undefined,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isVerifiedAdult: false,
+        };
+
+        onComplete(createdProfile);
+        return;
+      }
+
       if (isSupabaseConfigured && email && password) {
-        // Sign up through Supabase Auth
         const { user } = await authService.signUp({
           email: email.trim(),
           password,
@@ -198,7 +296,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         });
 
         if (user) {
-          // Upload any selected photos to Supabase Storage
           let uploadedPhotoUrls: string[] = [];
           for (let i = 0; i < selectedFiles.length; i++) {
             try {
@@ -235,7 +332,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             whatsappNumber: allowWhatsApp ? whatsappNumber.trim() : undefined,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            isVerifiedAdult: true,
+            isVerifiedAdult: false,
           };
 
           onComplete(createdProfile);
@@ -270,7 +367,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         whatsappNumber: allowWhatsApp ? whatsappNumber.trim() : undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        isVerifiedAdult: true,
+        isVerifiedAdult: false,
       };
 
       onComplete(newProfile);
@@ -327,11 +424,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                     </label>
                     <input
                       type="email"
-                      required
+                      required={!existingAuthUserId}
+                      disabled={Boolean(existingAuthUserId)}
                       placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] text-xs text-[#111111]"
+                      className={`w-full px-3 py-2 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111] ${
+                        existingAuthUserId ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
                     />
                   </div>
 
@@ -342,13 +442,38 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                     </label>
                     <input
                       type="password"
-                      required
+                      required={!existingAuthUserId}
+                      disabled={Boolean(existingAuthUserId)}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] text-xs text-[#111111]"
+                      className={`w-full px-3 py-2 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111] ${
+                        existingAuthUserId ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
                     />
                   </div>
+
+                  <div className="relative flex items-center gap-2">
+                    <div className="flex-1 h-px bg-[#E2DDD5]" />
+                    <span className="text-[10px] text-[#7A766E] font-semibold uppercase tracking-wider">or</span>
+                    <div className="flex-1 h-px bg-[#E2DDD5]" />
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    fullWidth
+                    onClick={handleGoogleSignUp}
+                    disabled={isSubmitting}
+                    icon={<Chrome size={16} />}
+                  >
+                    {existingAuthUserId ? 'Google account connected' : 'Continue with Google'}
+                  </Button>
+
+                  {existingAuthUserId && (
+                    <p className="text-[10px] text-[#17352F] font-semibold">
+                      Signed in as {email}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -446,12 +571,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
             {/* Photo Preview & Selection */}
             <div className="relative aspect-[4/5] rounded-[24px] overflow-hidden bg-[#EBE8E1] border-2 border-[#111111] shadow-md">
-              <img
-                src={photos[0]}
-                alt="Selected preview"
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
+              {photos[0] ? (
+                <img
+                  src={photos[0]}
+                  alt="Selected preview"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-[#7A766E]">
+                  <Camera size={32} className="mb-2 opacity-60" />
+                  <span className="text-xs font-bold">No photo selected</span>
+                </div>
+              )}
 
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
 
@@ -463,45 +595,38 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   accept="image/jpeg,image/png,image/webp"
                   className="hidden"
                 />
+                <input
+                  type="file"
+                  ref={cameraInputRef}
+                  onChange={handleFileUpload}
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  className="hidden"
+                />
                 <Button
                   variant="primary"
                   size="sm"
                   fullWidth
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={handleCameraCapture}
+                  icon={<Camera size={14} />}
+                >
+                  Take Photo
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  fullWidth
+                  onClick={handleFileSelect}
                   icon={<Upload size={14} />}
                 >
-                  Upload Your Photo
+                  Upload
                 </Button>
               </div>
             </div>
 
-            {/* Presets */}
-            <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-[#7A766E]">
-                Or select a test portrait:
-              </span>
-              <div className="flex gap-2">
-                {SAMPLE_PHOTO_PRESETS.map((preset, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setPhotos([preset])}
-                    className={`w-14 h-14 rounded-xl overflow-hidden border-2 transition-all ${
-                      photos[0] === preset
-                        ? 'border-[#E85D2A] scale-105'
-                        : 'border-[#E2DDD5] opacity-70'
-                    }`}
-                  >
-                    <img
-                      src={preset}
-                      alt={`Preset ${idx + 1}`}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="text-[11px] text-[#7A766E] text-center">
+              Take a selfie or upload a clear portrait. This helps ensure genuine profiles.
+            </p>
           </div>
         )}
 

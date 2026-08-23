@@ -156,7 +156,7 @@ export const api = {
   // Delete Account
   async deleteAccount(userId: string): Promise<void> {
     if (isSupabaseConfigured) {
-      await authService.signOut();
+      await authService.deleteAccount();
       return;
     }
     storageService.deleteProfile(userId);

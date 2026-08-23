@@ -93,6 +93,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      if (isSupabaseConfigured) {
+        await authService.signInWithGoogle();
+      } else {
+        showToast('Google Sign-In requires active Supabase Auth credentials', 'info');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to sign in with Google.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) {
@@ -307,6 +323,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     onClick={() => setAuthMode('signin')}
                   >
                     Log In with Email & Password
+                  </Button>
+                  <Button
+                    variant="outline"
+                    fullWidth
+                    onClick={handleGoogleSignIn}
+                    disabled={loading}
+                  >
+                    Continue with Google
                   </Button>
                 </div>
 

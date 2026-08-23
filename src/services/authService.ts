@@ -60,7 +60,7 @@ export const authService = {
         looking_for: data.lookingFor || 'Meaningful dating',
         allow_whatsapp: Boolean(data.allowWhatsApp),
         whatsapp_number: data.whatsappNumber || null,
-        is_verified_adult: true,
+        is_verified_adult: false,
       });
 
       if (profileError) {
@@ -117,6 +117,26 @@ export const authService = {
   },
 
   /**
+   * Sign in with Google OAuth
+   */
+  async signInWithGoogle(): Promise<void> {
+    if (!supabase) {
+      throw new Error('Supabase client is not configured');
+    }
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+  },
+
+  /**
    * Send a password reset email
    */
   async resetPassword(email: string): Promise<void> {
@@ -131,6 +151,50 @@ export const authService = {
     if (error) {
       throw error;
     }
+  },
+
+  /**
+   * Delete the current user's account and all associated data
+   */
+  async deleteAccount(): Promise<void> {
+    if (!supabase) return;
+
+    const user = await this.getCurrentUser();
+    if (!user) {
+      await this.signOut();
+      return;
+    }
+
+    try {
+      const { data: photos } = await supabase
+        .from('arrow_profile_photos')
+        .select('photo_url')
+        .eq('user_id', user.id);
+
+      if (photos && photos.length > 0) {
+        const paths = photos
+          .map((p) => {
+            try {
+              const url = new URL(p.photo_url);
+              const parts = url.pathname.split('arrow-profile-photos/');
+              return parts.length > 1 ? decodeURIComponent(parts[1]) : null;
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean) as string[];
+
+        if (paths.length > 0) {
+          await supabase.storage.from('arrow-profile-photos').remove(paths);
+        }
+      }
+
+      await supabase.from('arrow_profiles').delete().eq('id', user.id);
+    } catch (err) {
+      console.error('Error deleting account data:', err);
+    }
+
+    await this.signOut();
   },
 
   /**
