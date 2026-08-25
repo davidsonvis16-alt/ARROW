@@ -19,13 +19,13 @@ Follow these steps to connect your ARROW dating application to Supabase.
 2. Copy its entire content and paste it into the Supabase SQL Editor.
 3. Click **Run** (or press `Ctrl+Enter` / `Cmd+Enter`).
 4. You will see a success message (`Success. No rows returned`). This provisions:
-   - **Tables**: `arrow_profiles`, `arrow_profile_photos`, `arrow_preferences`, `arrow_likes`, `arrow_matches`, `arrow_blocks`, `arrow_reports`
-   - **Constraints**: Enforcing 18+ adult age, non-self likes/blocks, unique ordering
-   - **Indexes**: Fast indexing for discovery, gender preferences, and match lookups
-     - **Functions & Views**: `arrow_discoverable_profiles` (internal), `arrow_get_discover_feed`, `arrow_get_match_whatsapp_contact`, `arrow_can_view_profile_photo` (internal helper)
-     - **Automated Triggers**: Instant mutual like match creation (`arrow_trigger_mutual_like_match`) and block cleanup (`arrow_trigger_block_cleanup`)
-     - **Row Level Security (RLS)**: Strict RLS on all `arrow_*` tables. Profile raw data is never exposed directly; discovery happens only through `arrow_get_discover_feed`.
-     - **Storage Bucket**: Dedicated private `arrow-profile-photos` bucket with owner-managed upload policies and authenticated access controls. Photo visibility is controlled by `arrow_can_view_profile_photo` to respect blocks.
+    - **Tables**: `arrow_profiles`, `arrow_profile_photos`, `arrow_preferences`, `arrow_likes`, `arrow_matches`, `arrow_blocks`, `arrow_reports`, `arrow_age_verifications`
+    - **Constraints**: Enforcing 18+ adult age, non-self likes/blocks, unique ordering
+    - **Indexes**: Fast indexing for discovery, gender preferences, match lookups, and age verification lookups
+    - **Functions & Views**: `arrow_discoverable_profiles` (internal), `arrow_get_discover_feed`, `arrow_get_match_whatsapp_contact`, `arrow_complete_age_verification` (server-side 18+ verification), `arrow_can_view_profile_photo` (internal helper)
+    - **Automated Triggers**: Instant mutual like match creation (`arrow_trigger_mutual_like_match`) and block cleanup (`arrow_trigger_block_cleanup`)
+    - **Row Level Security (RLS)**: Strict RLS on all `arrow_*` tables. Profile raw data is never exposed directly; discovery happens only through `arrow_get_discover_feed`. Users cannot appear in discovery until `is_verified_adult = TRUE`.
+    - **Storage Bucket**: Dedicated private `arrow-profile-photos` bucket with owner-managed upload policies and authenticated access controls. Photo visibility is controlled by `arrow_can_view_profile_photo` to respect blocks.
 
 ---
 

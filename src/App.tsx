@@ -9,7 +9,7 @@ import {
 } from './types';
 import { storageService } from './services/storageService';
 import { api, authService, profileService } from './services/api';
-import { isSupabaseConfigured } from './lib/supabase';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 import { Header } from './components/common/Header';
 import { BottomNav } from './components/common/BottomNav';
 import { ProfileCard } from './components/discover/ProfileCard';
@@ -99,6 +99,9 @@ function ArrowApp() {
     type: null,
   });
 
+  // Track previous user to detect login changes for match notifications
+  const [prevUserId, setPrevUserId] = useState<string | null>(null);
+
   // 1. Initialize Supabase Auth & Session Restoration
   useEffect(() => {
     let mounted = true;
@@ -111,6 +114,8 @@ function ArrowApp() {
             const profile = await profileService.getProfile(session.user.id);
             if (profile && mounted) {
               setCurrentUser(profile);
+              setPrevUserId(profile.id);
+              await authService.updateLastLogin(profile.id);
             }
           }
         } catch (err) {
@@ -123,6 +128,7 @@ function ArrowApp() {
           const user = storageService.getProfile(currentId);
           if (user) {
             setCurrentUser(user);
+            setPrevUserId(user.id);
           }
         }
       }
@@ -136,9 +142,17 @@ function ArrowApp() {
         const profile = await profileService.getProfile(session.user.id);
         if (profile && mounted) {
           setCurrentUser(profile);
+          await authService.updateLastLogin(profile.id);
+
+          // Notify about match logins
+          if (prevUserId && prevUserId !== profile.id) {
+            await checkMatchLogins(profile.id);
+          }
+          setPrevUserId(profile.id);
         }
       } else if (event === 'SIGNED_OUT') {
         if (mounted) {
+          setPrevUserId(currentUser?.id || null);
           setCurrentUser(null);
         }
       }
@@ -148,7 +162,47 @@ function ArrowApp() {
       mounted = false;
       unsubscribe();
     };
-  }, []);
+  }, [prevUserId, currentUser?.id]);
+
+  // Check for match logins and show notifications
+  const checkMatchLogins = async (userId: string) => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    try {
+      // Get user's matches
+      const { data: matchesData } = await supabase
+        .from('arrow_matches')
+        .select('user1_id, user2_id')
+        .or(`user1_id.eq.${userId},user2_id.eq.${userId}`);
+
+      if (!matchesData || matchesData.length === 0) return;
+
+      const matchIds = matchesData.map((m) =>
+        m.user1_id === userId ? m.user2_id : m.user1_id
+      );
+
+      // Get profiles of matches that logged in recently (last 24 hours)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentProfiles } = await supabase
+        .from('arrow_profiles')
+        .select('id, name, last_login_at')
+        .in('id', matchIds)
+        .gte('last_login_at', oneDayAgo)
+        .order('last_login_at', { ascending: false });
+
+      if (recentProfiles && recentProfiles.length > 0) {
+        for (const profile of recentProfiles) {
+          const loginTime = new Date(profile.last_login_at).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          showToast(`${profile.name} is online (logged in at ${loginTime})`, 'info');
+        }
+      }
+    } catch (err) {
+      console.error('Error checking match logins:', err);
+    }
+  };
 
   // 2. Refresh Feed, Likes & Matches data whenever currentUser or filters change
   const refreshAppData = useCallback(async () => {

@@ -47,36 +47,6 @@ export const authService = {
       throw authError;
     }
 
-    // If a session or user is returned, create initial profile entry
-    if (authData.user) {
-      const { error: profileError } = await supabase.from('arrow_profiles').upsert({
-        id: authData.user.id,
-        name: data.name,
-        date_of_birth: data.dateOfBirth,
-        gender: data.gender,
-        location: data.location || 'London, UK',
-        bio: data.bio || '',
-        interests: data.interests || [],
-        looking_for: data.lookingFor || 'Meaningful dating',
-        allow_whatsapp: Boolean(data.allowWhatsApp),
-        whatsapp_number: data.whatsappNumber || null,
-        is_verified_adult: false,
-      });
-
-      if (profileError) {
-        console.error('Error creating profile after signup:', profileError);
-      }
-
-      // Also create default preferences
-      await supabase.from('arrow_preferences').upsert({
-        user_id: authData.user.id,
-        age_min: 18,
-        age_max: 65,
-        gender_preference: ['woman', 'man', 'non-binary'],
-        intentions: ['Meaningful dating'],
-      });
-    }
-
     return { user: authData.user, session: authData.session };
   },
 
@@ -137,6 +107,62 @@ export const authService = {
   },
 
   /**
+   * Resend email verification
+   */
+  async resendEmailVerification(email: string): Promise<void> {
+    if (!supabase) {
+      throw new Error('Supabase client is not configured');
+    }
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+
+    if (error) {
+      throw error;
+    }
+  },
+
+  /**
+   * Check if the current user's email is verified
+   */
+  async checkEmailVerification(): Promise<boolean> {
+    const user = await this.getCurrentUser();
+    if (!user) {
+      return false;
+    }
+    return Boolean(user.email_confirmed_at);
+  },
+
+  /**
+   * Complete age verification server-side
+   */
+  async completeAgeVerification(dateOfBirth: string): Promise<{ success: boolean; age?: number; error?: string }> {
+    if (!supabase) {
+      return { success: false, error: 'Supabase client is not configured' };
+    }
+
+    const { data, error } = await supabase.rpc('arrow_complete_age_verification', {
+      p_date_of_birth: dateOfBirth,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (data && !data.success) {
+      return { success: false, error: data.error };
+    }
+
+    if (data && data.success) {
+      return { success: true, age: data.age };
+    }
+
+    return { success: false, error: 'Verification failed' };
+  },
+
+  /**
    * Send a password reset email
    */
   async resetPassword(email: string): Promise<void> {
@@ -150,6 +176,21 @@ export const authService = {
 
     if (error) {
       throw error;
+    }
+  },
+
+  /**
+   * Update the current user's last login timestamp
+   */
+  async updateLastLogin(userId: string): Promise<void> {
+    if (!supabase) return;
+    try {
+      await supabase
+        .from('arrow_profiles')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', userId);
+    } catch (err) {
+      console.error('Error updating last login:', err);
     }
   },
 

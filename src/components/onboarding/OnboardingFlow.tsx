@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { UserProfile, Gender } from '../../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { UserProfile } from '../../types';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { calculateAge, isAdult } from '../../services/storageService';
@@ -15,17 +15,14 @@ import {
   ChevronLeft,
   ArrowRight,
   Lock,
-  Mail,
-  Key,
   Chrome,
+  RefreshCw,
 } from 'lucide-react';
 
 interface OnboardingFlowProps {
   onComplete: (profile: UserProfile) => void;
   onCancel?: () => void;
 }
-
-const SAMPLE_PHOTO_PRESETS: string[] = [];
 
 const AVAILABLE_INTERESTS = [
   'Architecture',
@@ -57,49 +54,59 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onCancel,
 }) => {
   const [step, setStep] = useState(1);
-  const totalSteps = 4;
+  const totalSteps = 6;
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Credentials (when Supabase is configured)
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-
-  // Google OAuth: if user is already authenticated, skip email/password
+  // Google OAuth: if user is already authenticated, reuse session
   const [existingAuthUserId, setExistingAuthUserId] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState('');
 
-  // Step 1: Basic Identity & 18+ Age verification
+  // Email/password auth
+  const [authMethod, setAuthMethod] = useState<'google' | 'email'>('google');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+
+  // Step 1: Google Sign-In + basic identity
   const [name, setName] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState<'woman' | 'man' | 'non-binary'>('woman');
   const [location, setLocation] = useState('');
 
-  // Step 2: Photos
+  // Step 2: Email verification
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [isCheckingVerification, setIsCheckingVerification] = useState(false);
+
+  // Step 3: Age verification
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [hasConfirmedAge, setHasConfirmedAge] = useState(false);
+  const [isVerifyingAge, setIsVerifyingAge] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
+
+  // Step 4: Photos
   const [photos, setPhotos] = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // Step 3: Bio, Looking for & Interests
+  // Step 5: Bio, Looking for & Interests
   const [bio, setBio] = useState('');
   const [lookingFor, setLookingFor] = useState('Meaningful dating');
   const [interests, setInterests] = useState<string[]>(['Architecture', 'Coffee']);
 
-  // Step 4: WhatsApp Option & Completion
+  // Step 6: WhatsApp Option & Completion
   const [allowWhatsApp, setAllowWhatsApp] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState('');
 
-  // Age calculation
   const calculatedAge = dateOfBirth ? calculateAge(dateOfBirth) : 0;
   const isEligibleAdult = isAdult(dateOfBirth);
 
   // Check for existing Google OAuth session
-  React.useEffect(() => {
+  useEffect(() => {
     if (isSupabaseConfigured) {
       authService.getCurrentUser().then((user) => {
         if (user) {
           setExistingAuthUserId(user.id);
-          setEmail(user.email || '');
+          setAuthEmail(user.email || '');
         }
       });
     }
@@ -115,22 +122,121 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     }
   };
 
-  const handleNextStep = () => {
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signupEmail.trim() || !signupPassword.trim()) {
+      showToast('Please enter email and password', 'warning');
+      return;
+    }
+    if (signupPassword.length < 6) {
+      showToast('Password must be at least 6 characters', 'warning');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const { user } = await authService.signUp({
+        email: signupEmail.trim(),
+        password: signupPassword,
+        name: name.trim() || signupEmail.split('@')[0],
+        dateOfBirth: '',
+        gender,
+        location: location.trim() || null,
+      });
+
+      if (user) {
+        setExistingAuthUserId(user.id);
+        setAuthEmail(signupEmail.trim());
+        showToast('Account created. Please verify your email.', 'success');
+        setSignupPassword('');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create account', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const createMinimalProfile = async (userId: string) => {
+    if (!supabase) return;
+    await supabase.from('arrow_profiles').upsert({
+      id: userId,
+      name: name.trim() || 'Arrow User',
+      gender,
+      location: location.trim() || null,
+      is_verified_adult: false,
+    });
+    await supabase.from('arrow_preferences').upsert({
+      user_id: userId,
+      age_min: 18,
+      age_max: 65,
+      gender_preference: ['woman', 'man', 'non-binary'],
+      intentions: ['Meaningful dating'],
+    });
+  };
+
+  const checkEmailVerificationStatus = async () => {
+    setIsCheckingVerification(true);
+    try {
+      const verified = await authService.checkEmailVerification();
+      setIsEmailVerified(verified);
+      if (!verified) {
+        showToast('Please verify your email to continue', 'warning');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to check verification status', 'error');
+    } finally {
+      setIsCheckingVerification(false);
+    }
+  };
+
+  const resendVerificationEmail = async () => {
+    if (!authEmail) return;
+    setIsCheckingVerification(true);
+    try {
+      await authService.resendEmailVerification(authEmail);
+      showToast('Verification email sent. Please check your inbox.', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to resend verification email', 'error');
+    } finally {
+      setIsCheckingVerification(false);
+    }
+  };
+
+  const handleNextStep = async () => {
     if (step === 1) {
-      if (isSupabaseConfigured && !existingAuthUserId) {
-        if (!email.trim() || !password.trim()) {
-          showToast('Please provide an email and password to secure your profile', 'warning');
-          return;
-        }
-        if (password.length < 6) {
-          showToast('Password must be at least 6 characters', 'warning');
-          return;
-        }
+      if (!existingAuthUserId) {
+        showToast('Please sign in or create an account to continue', 'warning');
+        return;
       }
       if (!name.trim()) {
         showToast('Please enter your name', 'warning');
         return;
       }
+      if (!location.trim()) {
+        showToast('Please enter your general city or location', 'warning');
+        return;
+      }
+      await createMinimalProfile(existingAuthUserId);
+      await checkEmailVerificationStatus();
+      if (isEmailVerified) {
+        setStep(3);
+      } else {
+        setStep(2);
+      }
+      return;
+    }
+
+    if (step === 2) {
+      if (!isEmailVerified) {
+        showToast('Please verify your email before continuing', 'warning');
+        return;
+      }
+      setStep(3);
+      return;
+    }
+
+    if (step === 3) {
       if (!dateOfBirth) {
         showToast('Please enter your date of birth', 'warning');
         return;
@@ -139,20 +245,40 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         showToast('ARROW is strictly for verified adults aged 18 and older', 'error');
         return;
       }
-      if (!location.trim()) {
-        showToast('Please enter your general city or location', 'warning');
+      if (!hasConfirmedAge) {
+        showToast('Please confirm that you are 18 years old or older', 'warning');
         return;
       }
+
+      setIsVerifyingAge(true);
+      setVerificationError('');
+      try {
+        const result = await authService.completeAgeVerification(dateOfBirth);
+        if (result.success) {
+          showToast(`Age verified successfully (${result.age} years old)`, 'success');
+          setStep(4);
+        } else {
+          setVerificationError(result.error || 'Age verification failed');
+          showToast(result.error || 'Age verification failed', 'error');
+        }
+      } catch (err: any) {
+        const msg = err.message || 'Age verification failed';
+        setVerificationError(msg);
+        showToast(msg, 'error');
+      } finally {
+        setIsVerifyingAge(false);
+      }
+      return;
     }
 
-    if (step === 2) {
+    if (step === 4) {
       if (photos.length === 0) {
         showToast('Please add at least one portrait photo', 'warning');
         return;
       }
     }
 
-    if (step === 3) {
+    if (step === 5) {
       if (interests.length === 0) {
         showToast('Please pick at least 1 interest', 'warning');
         return;
@@ -212,148 +338,45 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   };
 
   const finishOnboarding = async () => {
+    if (!existingAuthUserId) return;
     setIsSubmitting(true);
     try {
-      if (isSupabaseConfigured && existingAuthUserId) {
-        await supabase.from('arrow_profiles').upsert({
-          id: existingAuthUserId,
-          name: name.trim(),
-          date_of_birth: dateOfBirth,
-          gender,
-          location: location.trim(),
-          bio: bio.trim(),
-          interests,
-          looking_for: lookingFor,
-          allow_whatsapp: Boolean(allowWhatsApp),
-          whatsapp_number: allowWhatsApp ? whatsappNumber.trim() : null,
-          is_verified_adult: false,
-        });
-
-        await supabase.from('arrow_preferences').upsert({
-          user_id: existingAuthUserId,
-          age_min: 18,
-          age_max: 65,
-          gender_preference: ['woman', 'man', 'non-binary'],
-          intentions: ['Meaningful dating'],
-        });
-
-        let uploadedPhotoUrls: string[] = [];
-        for (let i = 0; i < selectedFiles.length; i++) {
-          try {
-            const url = await profileService.uploadProfilePhoto(existingAuthUserId, selectedFiles[i], i);
-            uploadedPhotoUrls.push(url);
-          } catch (uploadErr) {
-            console.warn('Photo upload warning:', uploadErr);
-          }
-        }
-
-        if (uploadedPhotoUrls.length === 0 && photos.length > 0) {
-          uploadedPhotoUrls = photos;
-        }
-
-        const createdProfile: UserProfile = {
-          id: existingAuthUserId,
-          name: name.trim(),
-          dateOfBirth,
-          age: calculatedAge,
-          gender,
-          location: location.trim(),
-          bio: bio.trim(),
-          photos: uploadedPhotoUrls,
-          interests,
-          lookingFor,
-          prompts: [
-            {
-              id: 'p1',
-              question: 'A perfect Sunday looks like...',
-              answer: 'Exploring quiet coffee spots and listening to vinyl records.',
-            },
-          ],
-          allowWhatsApp,
-          whatsappNumber: allowWhatsApp ? whatsappNumber.trim() : undefined,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isVerifiedAdult: false,
-        };
-
-        onComplete(createdProfile);
-        return;
-      }
-
-      if (isSupabaseConfigured && email && password) {
-        const { user } = await authService.signUp({
-          email: email.trim(),
-          password,
-          name: name.trim(),
-          dateOfBirth,
-          gender,
-          location: location.trim(),
-          bio: bio.trim(),
-          interests,
-          lookingFor,
-          allowWhatsApp,
-          whatsappNumber: allowWhatsApp ? whatsappNumber.trim() : undefined,
-        });
-
-        if (user) {
-          let uploadedPhotoUrls: string[] = [];
-          for (let i = 0; i < selectedFiles.length; i++) {
-            try {
-              const url = await profileService.uploadProfilePhoto(user.id, selectedFiles[i], i);
-              uploadedPhotoUrls.push(url);
-            } catch (uploadErr) {
-              console.warn('Photo upload warning:', uploadErr);
-            }
-          }
-
-          if (uploadedPhotoUrls.length === 0 && photos.length > 0) {
-            uploadedPhotoUrls = photos;
-          }
-
-          const createdProfile: UserProfile = {
-            id: user.id,
-            name: name.trim(),
-            dateOfBirth,
-            age: calculatedAge,
-            gender,
-            location: location.trim(),
-            bio: bio.trim(),
-            photos: uploadedPhotoUrls,
-            interests,
-            lookingFor,
-            prompts: [
-              {
-                id: 'p1',
-                question: 'A perfect Sunday looks like...',
-                answer: 'Exploring quiet coffee spots and listening to vinyl records.',
-              },
-            ],
-            allowWhatsApp,
-            whatsappNumber: allowWhatsApp ? whatsappNumber.trim() : undefined,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            isVerifiedAdult: false,
-          };
-
-          onComplete(createdProfile);
-          return;
+      let uploadedPhotoUrls: string[] = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        try {
+          const url = await profileService.uploadProfilePhoto(existingAuthUserId, selectedFiles[i], i);
+          uploadedPhotoUrls.push(url);
+        } catch (uploadErr) {
+          console.warn('Photo upload warning:', uploadErr);
         }
       }
 
-      // Local / Offline mode profile creation
-      const localId = crypto.randomUUID
-        ? crypto.randomUUID()
-        : `usr_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      if (uploadedPhotoUrls.length === 0 && photos.length > 0) {
+        uploadedPhotoUrls = photos;
+      }
 
-      const newProfile: UserProfile = {
-        id: localId,
+      const finalPhotos = uploadedPhotoUrls.length > 0 ? uploadedPhotoUrls : photos;
+
+      await supabase.from('arrow_profiles').upsert({
+        id: existingAuthUserId,
+        name: name.trim(),
+        bio: bio.trim(),
+        interests,
+        looking_for: lookingFor,
+        allow_whatsapp: Boolean(allowWhatsApp),
+        whatsapp_number: allowWhatsApp ? whatsappNumber.trim() : null,
+        updated_at: new Date().toISOString(),
+      });
+
+      const createdProfile: UserProfile = {
+        id: existingAuthUserId,
         name: name.trim(),
         dateOfBirth,
         age: calculatedAge,
         gender,
         location: location.trim(),
         bio: bio.trim(),
-        photos,
+        photos: finalPhotos,
         interests,
         lookingFor,
         prompts: [
@@ -367,10 +390,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         whatsappNumber: allowWhatsApp ? whatsappNumber.trim() : undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        isVerifiedAdult: false,
+        isVerifiedAdult: true,
       };
 
-      onComplete(newProfile);
+      onComplete(createdProfile);
     } catch (err: any) {
       showToast(err.message || 'Error creating profile', 'error');
     } finally {
@@ -409,53 +432,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 Create Your Profile
               </h2>
               <p className="text-xs text-[#7A766E]">
-                Adult verification (18+) ensures a safe, genuine dating community.
+                Sign in with Google to get started.
               </p>
             </div>
 
             <div className="space-y-3.5">
-              {/* If Supabase is active, prompt for email/password credentials */}
+              {/* Google Sign In */}
               {isSupabaseConfigured && (
                 <div className="p-3 bg-white rounded-2xl border border-[#D9D6CF] space-y-2.5">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#111111] flex items-center gap-1.5">
-                      <Mail size={13} className="text-[#7A766E]" />
-                      <span>Email Address</span>
-                    </label>
-                    <input
-                      type="email"
-                      required={!existingAuthUserId}
-                      disabled={Boolean(existingAuthUserId)}
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111] ${
-                        existingAuthUserId ? 'opacity-60 cursor-not-allowed' : ''
-                      }`}
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#111111] flex items-center gap-1.5">
-                      <Key size={13} className="text-[#7A766E]" />
-                      <span>Password (min 6 characters)</span>
-                    </label>
-                    <input
-                      type="password"
-                      required={!existingAuthUserId}
-                      disabled={Boolean(existingAuthUserId)}
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className={`w-full px-3 py-2 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111] ${
-                        existingAuthUserId ? 'opacity-60 cursor-not-allowed' : ''
-                      }`}
-                    />
-                  </div>
-
                   <div className="relative flex items-center gap-2">
                     <div className="flex-1 h-px bg-[#E2DDD5]" />
-                    <span className="text-[10px] text-[#7A766E] font-semibold uppercase tracking-wider">or</span>
+                    <span className="text-[10px] text-[#7A766E] font-semibold uppercase tracking-wider">Google</span>
                     <div className="flex-1 h-px bg-[#E2DDD5]" />
                   </div>
 
@@ -463,18 +450,59 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                     variant="outline"
                     fullWidth
                     onClick={handleGoogleSignUp}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || existingAuthUserId !== null}
                     icon={<Chrome size={16} />}
                   >
-                    {existingAuthUserId ? 'Google account connected' : 'Continue with Google'}
+                    {existingAuthUserId ? `Google account connected (${authEmail})` : 'Continue with Google'}
                   </Button>
 
                   {existingAuthUserId && (
                     <p className="text-[10px] text-[#17352F] font-semibold">
-                      Signed in as {email}
+                      Signed in as {authEmail}
                     </p>
                   )}
                 </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-px bg-[#E2DDD5]" />
+                <span className="text-[10px] text-[#7A766E] font-semibold uppercase tracking-wider">or Email</span>
+                <div className="flex-1 h-px bg-[#E2DDD5]" />
+              </div>
+
+              {isSupabaseConfigured && (
+                <form onSubmit={handleEmailSignUp} className="p-3 bg-white rounded-2xl border border-[#D9D6CF] space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#111111]">Email</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="you@example.com"
+                      value={signupEmail}
+                      onChange={(e) => setSignupEmail(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-[#111111]">Password</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Min 6 characters"
+                      value={signupPassword}
+                      onChange={(e) => setSignupPassword(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                    />
+                  </div>
+                  <Button
+                    variant="primary"
+                    fullWidth
+                    type="submit"
+                    disabled={isSubmitting || existingAuthUserId !== null}
+                  >
+                    {existingAuthUserId ? 'Account connected' : 'Create Account'}
+                  </Button>
+                </form>
               )}
 
               <div className="space-y-1">
@@ -489,34 +517,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
                 />
-              </div>
-
-              {/* Date of Birth & Age Check */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center text-xs font-bold text-[#111111]">
-                  <label>Date of Birth</label>
-                  {dateOfBirth && (
-                    <span
-                      className={`text-[11px] font-bold ${
-                        isEligibleAdult ? 'text-[#17352F]' : 'text-[#D9383A]'
-                      }`}
-                    >
-                      {calculatedAge} yrs {isEligibleAdult ? '✓ (18+)' : '✗ (Must be 18+)'}
-                    </span>
-                  )}
-                </div>
-                <input
-                  type="date"
-                  required
-                  max={new Date().toISOString().split('T')[0]}
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
-                />
-                <div className="flex items-center gap-1 text-[10px] text-[#7A766E]">
-                  <Lock size={11} className="text-[#17352F]" />
-                  <span>Your birthdate is encrypted and never displayed publicly.</span>
-                </div>
               </div>
 
               {/* Gender */}
@@ -559,6 +559,131 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         )}
 
         {step === 2 && (
+          <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="space-y-1">
+              <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+                Verify Your Email
+              </h2>
+              <p className="text-xs text-[#7A766E]">
+                Confirm your email address to continue.
+              </p>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl border border-[#D9D6CF] space-y-3 shadow-xs">
+              {isEmailVerified ? (
+                <div className="flex items-center gap-2 text-xs text-[#17352F]">
+                  <ShieldAlert size={16} />
+                  <span className="font-bold">Email verified successfully</span>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-[#111111]">
+                    Check your email inbox for a verification link from Supabase Auth.
+                  </p>
+                  <p className="text-[10px] text-[#7A766E]">
+                    Sent to: {authEmail || 'your Google email'}
+                  </p>
+                  <div className="pt-2 space-y-2">
+                    <Button
+                      variant="outline"
+                      fullWidth
+                      onClick={resendVerificationEmail}
+                      disabled={isCheckingVerification}
+                      icon={<RefreshCw size={14} />}
+                    >
+                      Resend Verification Email
+                    </Button>
+                    <Button
+                      variant="primary"
+                      fullWidth
+                      onClick={checkEmailVerificationStatus}
+                      disabled={isCheckingVerification}
+                    >
+                      {isCheckingVerification ? 'Checking...' : "I've Verified My Email"}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="space-y-1">
+              <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+                Before you join Arrow
+              </h2>
+              <p className="text-xs text-[#7A766E]">
+                Arrow is an 18+ dating app.
+              </p>
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl border border-[#D9D6CF] space-y-4 shadow-xs">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-[#111111]">
+                  Date of Birth
+                </label>
+                <input
+                  type="date"
+                  required
+                  max={new Date().toISOString().split('T')[0]}
+                  value={dateOfBirth}
+                  onChange={(e) => {
+                    setDateOfBirth(e.target.value);
+                    setHasConfirmedAge(false);
+                    setVerificationError('');
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                />
+                <div className="flex items-center gap-1 text-[10px] text-[#7A766E]">
+                  <Lock size={11} className="text-[#17352F]" />
+                  <span>Your birthdate is encrypted and never displayed publicly.</span>
+                </div>
+              </div>
+
+              {dateOfBirth && (
+                <div className="space-y-2">
+                  <span
+                    className={`text-[11px] font-bold ${
+                      isEligibleAdult ? 'text-[#17352F]' : 'text-[#D9383A]'
+                    }`}
+                  >
+                    {calculatedAge} yrs {isEligibleAdult ? '✓ (18+)' : '✗ (Must be 18+)'}
+                  </span>
+
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasConfirmedAge}
+                      onChange={(e) => setHasConfirmedAge(e.target.checked)}
+                      disabled={!isEligibleAdult}
+                      className="mt-0.5 w-4 h-4 accent-[#17352F] cursor-pointer"
+                    />
+                    <span className="text-xs text-[#111111]">
+                      I confirm that I am 18 years old or older.
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              {verificationError && (
+                <p className="text-xs text-[#D9383A] font-medium">{verificationError}</p>
+              )}
+
+              <Button
+                variant="primary"
+                fullWidth
+                onClick={handleNextStep}
+                disabled={isVerifyingAge || !dateOfBirth || !isEligibleAdult || !hasConfirmedAge}
+              >
+                {isVerifyingAge ? 'Verifying...' : 'Verify Age & Continue'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
               <h2 className="text-2xl font-black text-[#111111] tracking-tight">
@@ -630,7 +755,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           </div>
         )}
 
-        {step === 3 && (
+        {step === 5 && (
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
               <h2 className="text-2xl font-black text-[#111111] tracking-tight">
@@ -699,7 +824,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           </div>
         )}
 
-        {step === 4 && (
+        {step === 6 && (
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
               <h2 className="text-2xl font-black text-[#111111] tracking-tight">

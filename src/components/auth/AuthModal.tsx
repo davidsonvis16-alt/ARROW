@@ -9,18 +9,13 @@ import { useToast } from '../ui/Toast';
 import {
   User,
   UserPlus,
-  LogIn,
   LogOut,
   ShieldCheck,
-  KeyRound,
+  AlertCircle,
+  ChevronRight,
+  ArrowRight,
   Mail,
   Lock,
-  Database,
-  CheckCircle2,
-  AlertCircle,
-  ArrowRight,
-  ExternalLink,
-  ChevronRight,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -41,24 +36,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onLogOut,
 }) => {
   const { showToast } = useToast();
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset' | 'overview'>('overview');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [savedProfiles, setSavedProfiles] = useState<UserProfile[]>([]);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       setSavedProfiles(storageService.getAllProfiles());
       setErrorMsg('');
-      if (!currentUser) {
-        setAuthMode('overview');
-      }
+      setEmail('');
+      setPassword('');
+      setAuthMode('signup');
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen]);
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setErrorMsg('Please enter both email and password.');
@@ -69,25 +64,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMsg('');
 
     try {
-      if (isSupabaseConfigured) {
-        await authService.signIn(email.trim(), password);
-        showToast('Signed in successfully with Supabase Auth', 'success');
-        onClose();
-      } else {
-        // Find existing local profile by email or name
-        const match = savedProfiles.find(
-          (p) => p.name.toLowerCase() === email.toLowerCase() || p.id === email
-        );
-        if (match) {
-          onSelectProfile(match);
-          showToast(`Welcome back, ${match.name}!`, 'success');
-          onClose();
+      if (authMode === 'signup') {
+        const result = await authService.signUp({
+          email: email.trim(),
+          password,
+          name: email.split('@')[0],
+          dateOfBirth: '',
+          gender: 'woman',
+        });
+
+        if (result.user && result.session) {
+          showToast('Account created successfully', 'success');
+          onStartOnboarding();
+        } else if (result.user) {
+          showToast('Account created. Please verify your email, then log in.', 'success');
+          setAuthMode('signin');
+          setPassword('');
         } else {
-          setErrorMsg('Supabase is not configured with real API keys yet. You can create a profile to explore.');
+          showToast('Account created. Please check your email.', 'success');
+          setAuthMode('signin');
+          setPassword('');
         }
+      } else {
+        const result = await authService.signIn(email.trim(), password);
+        showToast('Signed in successfully', 'success');
+        onStartOnboarding();
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to sign in. Please verify your credentials.');
+      setErrorMsg(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }
@@ -109,31 +113,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handlePasswordReset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) {
-      setErrorMsg('Please enter your email address.');
-      return;
-    }
-
-    setLoading(true);
-    setErrorMsg('');
-
-    try {
-      if (isSupabaseConfigured) {
-        await authService.resetPassword(email.trim());
-        showToast('Password reset link sent to your email', 'success');
-        setAuthMode('signin');
-      } else {
-        showToast('Password reset requires active Supabase Auth credentials', 'info');
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send reset email.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <Modal
       isOpen={isOpen}
@@ -143,30 +122,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       maxWidth="md"
     >
       <div className="space-y-5">
-        {/* Supabase Status Pill */}
-        <div className="flex items-center justify-between p-3 rounded-2xl bg-[#FAF8F4] border border-[#D9D6CF]">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-2.5 h-2.5 rounded-full ${isSupabaseConfigured ? 'bg-[#17352F]' : 'bg-[#E85D2A]'}`} />
-            <div>
-              <p className="text-xs font-bold text-[#111111] flex items-center gap-1.5">
-                <Database size={13} className="text-[#17352F]" />
-                <span>Backend: {isSupabaseConfigured ? 'Supabase Connected' : 'Configuration Ready'}</span>
-              </p>
-              <p className="text-[10px] text-[#7A766E]">
-                {isSupabaseConfigured
-                  ? 'Real-time PostgreSQL database, RLS & Storage active'
-                  : 'Add VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY to .env.local'}
-              </p>
-            </div>
-          </div>
-          {!isSupabaseConfigured && (
-            <span className="text-[10px] font-bold text-[#E85D2A] bg-[#FAF8F4] border border-[#E85D2A]/30 px-2 py-0.5 rounded-full">
-              Setup Guide Ready
-            </span>
-          )}
-        </div>
-
-        {/* LOGGED IN USER CARD */}
         {currentUser ? (
           <div className="space-y-5">
             <div className="p-4 bg-white rounded-2xl border border-[#D9D6CF] flex items-center gap-4 shadow-xs">
@@ -196,7 +151,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </div>
 
-            {/* Switch Saved Profile if available */}
             {savedProfiles.length > 1 && (
               <div className="space-y-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
@@ -245,7 +199,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             )}
 
-            {/* Actions */}
             <div className="space-y-2 pt-2 border-t border-[#D9D6CF]">
               <Button
                 variant="outline"
@@ -280,7 +233,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
           </div>
         ) : (
-          /* GUEST / LOGGED-OUT STATES */
           <div className="space-y-5">
             {errorMsg && (
               <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2 text-xs text-red-700">
@@ -289,208 +241,113 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             )}
 
-            {authMode === 'overview' && (
-              <div className="space-y-4">
-                {/* Primary CTA: Create Profile */}
-                <div className="space-y-2">
-                  <Button
-                    variant="primary"
-                    fullWidth
-                    size="lg"
-                    arrow="right"
-                    icon={<UserPlus size={18} />}
-                    onClick={() => {
-                      onClose();
-                      onStartOnboarding();
-                    }}
-                  >
-                    Create New Profile (18+)
-                  </Button>
-                  <p className="text-[11px] text-center text-[#7A766E]">
-                    Instant setup · Photo upload & Age verification
-                  </p>
-                </div>
-
-                {/* Secondary Option: Email / Password Log In */}
-                <div className="pt-3 border-t border-[#D9D6CF] space-y-2.5">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#111111]">
-                    Existing Account
-                  </h4>
-                  <Button
-                    variant="outline"
-                    fullWidth
-                    icon={<LogIn size={16} />}
-                    onClick={() => setAuthMode('signin')}
-                  >
-                    Log In with Email & Password
-                  </Button>
-                  <Button
-                    variant="outline"
-                    fullWidth
-                    onClick={handleGoogleSignIn}
-                    disabled={loading}
-                  >
-                    Continue with Google
-                  </Button>
-                </div>
-
-                {/* Saved Profiles on this device if any exist */}
-                {savedProfiles.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-[#D9D6CF]">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
-                      Saved Profiles on Device
-                    </h4>
-                    <div className="space-y-1.5 max-h-36 overflow-y-auto no-scrollbar">
-                      {savedProfiles.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            onSelectProfile(p);
-                            onClose();
-                            showToast(`Logged in as ${p.name}`, 'success');
-                          }}
-                          className="w-full p-2.5 bg-white hover:bg-[#FAF8F4] border border-[#D9D6CF] rounded-2xl flex items-center justify-between transition-colors cursor-pointer text-left group"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl overflow-hidden bg-stone-200 shrink-0 border border-[#D9D6CF]">
-                              <img
-                                src={
-                                  p.photos[0] ||
-                                  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
-                                }
-                                alt={p.name}
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
-                            <span className="text-xs font-bold text-[#111111] group-hover:text-[#E85D2A] transition-colors">
-                              {p.name}, {p.age}
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-[#111111] group-hover:text-[#E85D2A] flex items-center gap-1">
-                            <span>Log In</span>
-                            <ArrowRight size={13} />
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* SIGN IN FORM */}
-            {authMode === 'signin' && (
-              <form onSubmit={handleSignIn} className="space-y-4 animate-in fade-in duration-200">
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#111111]">Email Address</label>
-                    <div className="relative">
-                      <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A766E]" />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#111111]">
+                  Create Account
+                </h4>
+                {isSupabaseConfigured && (
+                  <form onSubmit={handleEmailAuth} className="space-y-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-[#111111]">Email</label>
                       <input
                         type="email"
                         required
                         placeholder="you@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-2xl border border-[#D9D6CF] bg-white text-xs text-[#111111] focus:outline-none focus:border-[#111111]"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
                       />
                     </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
+                    <div className="space-y-1">
                       <label className="text-xs font-bold text-[#111111]">Password</label>
-                      <button
-                        type="button"
-                        onClick={() => setAuthMode('reset')}
-                        className="text-[11px] font-semibold text-[#E85D2A] hover:underline cursor-pointer"
-                      >
-                        Forgot password?
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A766E]" />
                       <input
                         type="password"
                         required
-                        placeholder="••••••••"
+                        placeholder="Min 6 characters"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-2xl border border-[#D9D6CF] bg-white text-xs text-[#111111] focus:outline-none focus:border-[#111111]"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
                       />
                     </div>
-                  </div>
+                    <Button
+                      variant="primary"
+                      fullWidth
+                      type="submit"
+                      disabled={loading}
+                    >
+                      {authMode === 'signup' ? 'Create Account' : 'Log In'}
+                    </Button>
+                  </form>
+                )}
+
+                <Button
+                  variant="ghost"
+                  fullWidth
+                  onClick={() => setAuthMode((prev) => (prev === 'signin' ? 'signup' : 'signin'))}
+                  disabled={loading}
+                >
+                  {authMode === 'signin' ? 'Need an account? Sign up' : 'Have an account? Log in'}
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-px bg-[#E2DDD5]" />
+                <span className="text-[10px] text-[#7A766E] font-semibold uppercase tracking-wider">or</span>
+                <div className="flex-1 h-px bg-[#E2DDD5]" />
+              </div>
+
+              <Button
+                variant="outline"
+                fullWidth
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+              >
+                Continue with Google
+              </Button>
+            </div>
+
+            {savedProfiles.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-[#D9D6CF]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
+                  Saved Profiles on Device
+                </h4>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto no-scrollbar">
+                  {savedProfiles.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        onSelectProfile(p);
+                        onClose();
+                        showToast(`Logged in as ${p.name}`, 'success');
+                      }}
+                      className="w-full p-2.5 bg-white hover:bg-[#FAF8F4] border border-[#D9D6CF] rounded-2xl flex items-center justify-between transition-colors cursor-pointer text-left group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl overflow-hidden bg-stone-200 shrink-0 border border-[#D9D6CF]">
+                          <img
+                            src={
+                              p.photos[0] ||
+                              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
+                            }
+                            alt={p.name}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <span className="text-xs font-bold text-[#111111] group-hover:text-[#E85D2A] transition-colors">
+                          {p.name}, {p.age}
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold text-[#111111] group-hover:text-[#E85D2A] flex items-center gap-1">
+                        <span>Log In</span>
+                        <ArrowRight size={13} />
+                      </span>
+                    </button>
+                  ))}
                 </div>
-
-                <div className="pt-2 space-y-2">
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    fullWidth
-                    disabled={loading}
-                    icon={loading ? undefined : <LogIn size={16} />}
-                  >
-                    {loading ? 'Authenticating...' : 'Log In'}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    fullWidth
-                    onClick={() => setAuthMode('overview')}
-                  >
-                    Back
-                  </Button>
-                </div>
-              </form>
-            )}
-
-            {/* PASSWORD RESET FORM */}
-            {authMode === 'reset' && (
-              <form onSubmit={handlePasswordReset} className="space-y-4 animate-in fade-in duration-200">
-                <div className="space-y-2">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#111111]">Account Email</label>
-                    <div className="relative">
-                      <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A766E]" />
-                      <input
-                        type="email"
-                        required
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-2xl border border-[#D9D6CF] bg-white text-xs text-[#111111] focus:outline-none focus:border-[#111111]"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-[#7A766E]">
-                    We'll send a secure password reset link to this email address.
-                  </p>
-                </div>
-
-                <div className="pt-2 space-y-2">
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    fullWidth
-                    disabled={loading}
-                    icon={loading ? undefined : <KeyRound size={16} />}
-                  >
-                    {loading ? 'Sending...' : 'Send Reset Link'}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    fullWidth
-                    onClick={() => setAuthMode('signin')}
-                  >
-                    Back to Log In
-                  </Button>
-                </div>
-              </form>
+              </div>
             )}
           </div>
         )}

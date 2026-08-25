@@ -55,11 +55,14 @@ END $$;
 -- 3. ARROW TABLES DEFINITION
 -- ==============================================================================
 
+-- 3.1.0 ARROW PROFILES TABLE ALTERATIONS (additive migration)
+ALTER TABLE public.arrow_profiles ALTER COLUMN date_of_birth DROP NOT NULL;
+
 -- 3.1 ARROW PROFILES TABLE (Connected directly to Supabase Auth auth.users)
 CREATE TABLE IF NOT EXISTS public.arrow_profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  date_of_birth DATE NOT NULL,
+  date_of_birth DATE DEFAULT NULL,
   gender arrow_user_gender NOT NULL,
   location TEXT DEFAULT NULL,
   bio TEXT DEFAULT '',
@@ -69,11 +72,23 @@ CREATE TABLE IF NOT EXISTS public.arrow_profiles (
   allow_whatsapp BOOLEAN NOT NULL DEFAULT false,
   whatsapp_number TEXT DEFAULT NULL,
   is_verified_adult BOOLEAN NOT NULL DEFAULT false,
+  last_login_at TIMESTAMPTZ DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-  -- Strict age restriction: Must be 18+
-  CONSTRAINT check_arrow_adult_age CHECK (date_part('year', age(date_of_birth)) >= 18)
+  -- Strict age restriction: Must be 18+ when date_of_birth is set
+  CONSTRAINT check_arrow_adult_age CHECK (date_of_birth IS NULL OR date_part('year', age(date_of_birth)) >= 18)
+);
+
+-- 3.1.1 ARROW AGE VERIFICATIONS TABLE
+CREATE TABLE IF NOT EXISTS public.arrow_age_verifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.arrow_profiles(id) ON DELETE CASCADE,
+  date_of_birth DATE NOT NULL,
+  is_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+  verified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT unique_arrow_age_verification_user UNIQUE (user_id)
 );
 
 -- 3.2 ARROW PROFILE PHOTOS TABLE (Up to 6 photos per user)
@@ -164,6 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_arrow_matches_user2 ON public.arrow_matches(user2
 CREATE INDEX IF NOT EXISTS idx_arrow_blocks_blocker ON public.arrow_blocks(blocker_id);
 CREATE INDEX IF NOT EXISTS idx_arrow_blocks_blocked ON public.arrow_blocks(blocked_id);
 CREATE INDEX IF NOT EXISTS idx_arrow_reports_reporter ON public.arrow_reports(reporter_id);
+CREATE INDEX IF NOT EXISTS idx_arrow_age_verifications_user_id ON public.arrow_age_verifications(user_id);
 
 -- ==============================================================================
 -- 5. SECURE DISCOVERY VIEW & FUNCTIONS (PRIVACY BY DESIGN)
@@ -193,7 +209,8 @@ SELECT
     ),
     '{}'::text[]
   ) AS photos
-FROM public.arrow_profiles p;
+FROM public.arrow_profiles p
+WHERE p.is_verified_adult = TRUE;
 
 REVOKE ALL ON public.arrow_discoverable_profiles FROM PUBLIC;
 REVOKE ALL ON public.arrow_discoverable_profiles FROM authenticated;
@@ -260,6 +277,7 @@ BEGIN
          OR (b.blocked_id = v_current_user_id AND b.blocker_id = dp.id)
     )
     AND (dp.age >= p_age_min AND dp.age <= p_age_max)
+    AND dp.is_verified_adult = TRUE
     AND (p_genders IS NULL OR cardinality(p_genders) = 0 OR dp.gender::TEXT = ANY(p_genders))
     AND (p_location IS NULL OR p_location = '' OR dp.location ILIKE '%' || p_location || '%')
   ORDER BY dp.created_at DESC
@@ -341,6 +359,72 @@ REVOKE ALL ON FUNCTION public.arrow_get_match_whatsapp_contact(
 GRANT EXECUTE ON FUNCTION public.arrow_get_match_whatsapp_contact(
   UUID
 ) TO authenticated;
+
+-- ==============================================================================
+-- 5.1 SERVER-SIDE AGE VERIFICATION
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.arrow_complete_age_verification(p_date_of_birth DATE)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_current_user_id UUID := auth.uid();
+  v_email_confirmed_at TIMESTAMPTZ;
+  v_age INT;
+  v_profile_exists BOOLEAN;
+BEGIN
+  IF v_current_user_id IS NULL THEN
+    RETURN jsonb_build_object('success', FALSE, 'error', 'Authentication required');
+  END IF;
+
+  SELECT email_confirmed_at INTO v_email_confirmed_at
+  FROM auth.users
+  WHERE id = v_current_user_id;
+
+  IF v_email_confirmed_at IS NULL THEN
+    RETURN jsonb_build_object('success', FALSE, 'error', 'Email not verified');
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM public.arrow_profiles WHERE id = v_current_user_id)
+  INTO v_profile_exists;
+
+  IF NOT v_profile_exists THEN
+    RETURN jsonb_build_object('success', FALSE, 'error', 'Profile not found');
+  END IF;
+
+  IF p_date_of_birth IS NULL THEN
+    RETURN jsonb_build_object('success', FALSE, 'error', 'Date of birth is required');
+  END IF;
+
+  v_age := date_part('year', age(p_date_of_birth))::INT;
+
+  IF v_age < 18 THEN
+    RETURN jsonb_build_object('success', FALSE, 'error', 'Must be 18 or older');
+  END IF;
+
+  UPDATE public.arrow_profiles
+  SET date_of_birth = p_date_of_birth,
+      is_verified_adult = TRUE,
+      updated_at = NOW()
+  WHERE id = v_current_user_id;
+
+  INSERT INTO public.arrow_age_verifications (user_id, date_of_birth, is_eligible, verified_at)
+  VALUES (v_current_user_id, p_date_of_birth, TRUE, NOW())
+  ON CONFLICT (user_id) DO UPDATE SET
+    date_of_birth = EXCLUDED.date_of_birth,
+    is_eligible = TRUE,
+    verified_at = NOW();
+
+  RETURN jsonb_build_object('success', TRUE, 'age', v_age);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.arrow_complete_age_verification(DATE) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.arrow_complete_age_verification(DATE) FROM authenticated;
+REVOKE ALL ON FUNCTION public.arrow_complete_age_verification(DATE) FROM anon;
+GRANT EXECUTE ON FUNCTION public.arrow_complete_age_verification(DATE) TO authenticated;
 
 -- ==============================================================================
 -- 6. AUTOMATED SERVER-SIDE MUTUAL MATCH TRIGGER
@@ -474,6 +558,15 @@ CREATE POLICY "Arrow users can delete own profile"
 ON public.arrow_profiles FOR DELETE
 TO authenticated
 USING (auth.uid() = id);
+
+-- 8.1.1 ARROW AGE VERIFICATIONS RLS
+ALTER TABLE public.arrow_age_verifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own age verification" ON public.arrow_age_verifications;
+CREATE POLICY "Users can view own age verification"
+ON public.arrow_age_verifications FOR SELECT
+TO authenticated
+USING (auth.uid() = user_id);
 
 -- 8.2 ARROW PROFILE PHOTOS RLS
 ALTER TABLE public.arrow_profile_photos ENABLE ROW LEVEL SECURITY;
