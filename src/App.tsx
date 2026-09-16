@@ -605,8 +605,7 @@ function ArrowApp() {
               <div className="w-10 h-10 rounded-xl overflow-hidden bg-stone-700 shrink-0 border border-white/10">
                 <img
                   src={
-                    currentUser.photos[0] ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+                    currentUser.photos[0]
                   }
                   alt={currentUser.name}
                   className="w-full h-full object-cover"
@@ -689,11 +688,23 @@ function ArrowApp() {
                   <ProfileCard
                     profile={currentDiscoverProfile}
                     onLike={() => handleLike(currentDiscoverProfile)}
+                    onSuperLike={() => handleLike(currentDiscoverProfile, true)}
                     onPass={() => handlePass(currentDiscoverProfile)}
+                    onRewind={handleRewind}
                     onOpenDetail={() => setDetailProfile(currentDiscoverProfile)}
                     onReport={() => setReportTarget(currentDiscoverProfile)}
                     isAnimating={cardAnimation}
+                    canRewind={Boolean(currentUser) && cardIndex > 0}
+                    superRemaining={quota?.superRemaining ?? 0}
                   />
+
+                  {quota && quota.arrowsRemaining <= 10 && (
+                    <p className="mt-3 text-center text-[11px] text-[var(--color-stone-dark)]">
+                      {quota.arrowsRemaining > 0
+                        ? `${quota.arrowsRemaining} arrows left today`
+                        : 'You have used all your arrows today. More tomorrow.'}
+                    </p>
+                  )}
                 </div>
               ) : (
                 /* Authentic Clean State when no more profiles exist in feed */
@@ -832,8 +843,7 @@ function ArrowApp() {
                   <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 ring-2 ring-[#E85D2A] ring-offset-2">
                     <img
                       src={
-                        m.partnerProfile.photos[0] ||
-                        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+                        m.partnerProfile.photos[0]
                       }
                       alt={m.partnerProfile.name}
                       className="w-full h-full object-cover"
@@ -861,8 +871,7 @@ function ArrowApp() {
                   <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 border border-[#D9D6CF]">
                     <img
                       src={
-                        l.profile.photos[0] ||
-                        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+                        l.profile.photos[0]
                       }
                       alt={l.profile.name}
                       className="w-full h-full object-cover"
@@ -1027,6 +1036,18 @@ function ArrowApp() {
           setMatchCelebration({ isOpen: false, partnerProfile: null });
           setCurrentTab('discover');
         }}
+        onOpenConversation={() => {
+          // Jump straight into the new conversation rather than leaving the
+          // person to hunt for it in the matches tab.
+          const partnerId = matchCelebration.partnerProfile?.id;
+          setCurrentTab('matches');
+          setMatchCelebration({ isOpen: false, partnerProfile: null });
+
+          if (partnerId) {
+            const found = matches.find((m) => m.partnerProfile.id === partnerId);
+            if (found) setSelectedMatch(found);
+          }
+        }}
       />
 
       {/* Match Detail View */}
@@ -1036,6 +1057,7 @@ function ArrowApp() {
         onClose={() => setSelectedMatch(null)}
         onUnmatch={handleUnmatch}
         onReport={(profile) => setReportTarget(profile)}
+        onConversationRead={refreshAppData}
       />
 
       {/* Filters Bottom Sheet */}

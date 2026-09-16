@@ -26,8 +26,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
   if (!profile) return null;
 
   const photos = profile.photos && profile.photos.length > 0
-    ? profile.photos
-    : ['https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80'];
+    ? profile.photos : [];
 
   return (
     <Modal
@@ -40,14 +39,20 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
       <div className="space-y-6 pb-4">
         {/* Photo Gallery Viewer */}
         <div className="space-y-2">
-          <div className="relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#EBE8E1] border border-[#E2DDD5]">
-            <img
-              src={photos[activePhotoIdx]}
-              alt={profile.name}
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </div>
+          {photos.length > 0 ? (
+            <div className="relative aspect-[4/5] rounded-2xl overflow-hidden bg-[var(--color-stone-light)] border border-[var(--color-border-subtle)]">
+              <img
+                src={photos[activePhotoIdx]}
+                alt={`${profile.name}, photo ${activePhotoIdx + 1}`}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          ) : (
+            <div className="aspect-[16/9] rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border-subtle)] flex items-center justify-center text-xs text-[var(--color-stone-dark)]">
+              {profile.name} has not added photos yet
+            </div>
+          )}
 
           {/* Thumbnails if multiple */}
           {photos.length > 1 && (

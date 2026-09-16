@@ -1,4 +1,5 @@
 import React from 'react';
+import { Avatar } from '../ui/Avatar';
 import { SlidersHorizontal, Shield, User, LogIn } from 'lucide-react';
 import { TabType, UserProfile } from '../../types';
 
@@ -89,17 +90,13 @@ export const Header: React.FC<HeaderProps> = ({
               title={`Logged in as ${currentUser.name} - Click for Account Options`}
               aria-label="User Account"
             >
-              <div className="w-7 h-7 rounded-full overflow-hidden bg-stone-200 border border-[#D9D6CF] shrink-0">
-                <img
-                  src={
-                    currentUser.photos[0] ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80'
-                  }
-                  alt={currentUser.name}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
+              <Avatar
+                name={currentUser.name}
+                src={currentUser.photos[0]}
+                size="xs"
+                rounded="full"
+                className="w-7 h-7 text-[10px]"
+              />
               <span className="text-xs font-bold text-[#111111] max-w-[90px] truncate hidden sm:inline">
                 {currentUser.name}
               </span>

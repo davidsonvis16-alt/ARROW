@@ -128,8 +128,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="relative w-14 h-14 rounded-2xl overflow-hidden bg-stone-700 shrink-0 border border-[#D9D6CF]">
                 <img
                   src={
-                    currentUser.photos[0] ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+                    currentUser.photos[0]
                   }
                   alt={currentUser.name}
                   className="w-full h-full object-cover"
@@ -174,8 +173,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                           <div className="w-9 h-9 rounded-xl overflow-hidden bg-stone-200 shrink-0">
                             <img
                               src={
-                                p.photos[0] ||
-                                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
+                                p.photos[0]
                               }
                               alt={p.name}
                               className="w-full h-full object-cover"
@@ -328,8 +326,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         <div className="w-8 h-8 rounded-xl overflow-hidden bg-stone-200 shrink-0 border border-[#D9D6CF]">
                           <img
                             src={
-                              p.photos[0] ||
-                              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
+                              p.photos[0]
                             }
                             alt={p.name}
                             className="w-full h-full object-cover"

@@ -2,10 +2,11 @@ import React from 'react';
 import { UserProfile } from '../../types';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
-import { Heart, Compass, MapPin, ArrowLeft, ArrowRight, ShieldAlert } from 'lucide-react';
+import { Heart, Compass, MapPin, ArrowLeft, ArrowRight, ShieldAlert, Star } from 'lucide-react';
+import { LikeEntry } from '../../types';
 
 interface LikesListProps {
-  likes: Array<{ profile: UserProfile }>;
+  likes: LikeEntry[];
   isGuest?: boolean;
   onOpenAuth?: () => void;
   onLikeBack: (targetProfile: UserProfile) => void;
@@ -88,14 +89,17 @@ export const LikesList: React.FC<LikesListProps> = ({
             Interested in You
           </h2>
           <p className="text-xs text-[#7A766E] font-medium">
-            {likes.length} {likes.length === 1 ? 'person' : 'people'} sent you an Arrow
+            {likes.length} {likes.length === 1 ? 'person' : 'people'} sent you an arrow
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
-        {likes.map(({ profile }) => {
-          const photo = profile.photos[0] || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
+        {likes.map(({ profile, isSuper }) => {
+          const photo = profile.photos[0];
+          const monogramHue = profile.name
+            .split('')
+            .reduce((acc, ch) => (acc + ch.charCodeAt(0) * 17) % 360, 0);
           return (
             <div
               key={profile.id}
@@ -106,13 +110,35 @@ export const LikesList: React.FC<LikesListProps> = ({
                 onClick={() => onViewProfile(profile)}
                 className="relative aspect-[16/10] bg-[#EBE8E1] cursor-pointer group"
               >
-                <img
-                  src={photo}
-                  alt={profile.name}
-                  className="w-full h-full object-cover group-hover:scale-101 transition-transform duration-300"
-                  referrerPolicy="no-referrer"
-                />
+                {photo ? (
+                  <img
+                    src={photo}
+                    alt={profile.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div
+                    className="w-full h-full flex items-center justify-center"
+                    style={{
+                      background: `linear-gradient(145deg, hsl(${monogramHue} 40% 58%), hsl(${
+                        (monogramHue + 40) % 360
+                      } 36% 36%))`,
+                    }}
+                  >
+                    <span className="text-6xl font-black text-white/25">
+                      {profile.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+                {isSuper && (
+                  <div className="absolute top-3.5 left-3.5 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--color-forest)] text-white text-[10px] font-bold uppercase tracking-wider">
+                    <Star size={11} />
+                    <span>Super arrow</span>
+                  </div>
+                )}
 
                 <div className="absolute top-3.5 right-3.5 z-10">
                   <button

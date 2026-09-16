@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserProfile, BlockRecord } from '../../types';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { Avatar } from '../ui/Avatar';
 import { storageService } from '../../services/storageService';
 import { useToast } from '../ui/Toast';
 import { LegalDocType } from '../safety/LegalModal';
@@ -86,14 +87,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Account Info Card */}
         <div className="p-4 bg-[#FFFFFF] rounded-2xl border border-[#E2DDD5] flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl overflow-hidden bg-[#EBE8E1] border border-[#E2DDD5]">
-              <img
-                src={currentUser.photos[0] || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'}
-                alt={currentUser.name}
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            </div>
+            <Avatar name={currentUser.name} src={currentUser.photos[0]} size="md" />
             <div>
               <h3 className="text-sm font-bold text-[#111111]">{currentUser.name}</h3>
               <p className="text-[11px] text-[#7A766E]">

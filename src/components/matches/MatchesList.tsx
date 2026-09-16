@@ -1,14 +1,24 @@
 import React from 'react';
-import { UserProfile, MatchRecord } from '../../types';
+import { MatchWithProfile } from '../../types';
 import { Button } from '../ui/Button';
 import { Users, Compass, MessageCircle, MapPin, ChevronRight } from 'lucide-react';
 
 interface MatchesListProps {
-  matches: Array<MatchRecord & { partnerProfile: UserProfile }>;
+  matches: MatchWithProfile[];
   isGuest?: boolean;
   onOpenAuth?: () => void;
-  onSelectMatch: (match: MatchRecord & { partnerProfile: UserProfile }) => void;
+  onSelectMatch: (match: MatchWithProfile) => void;
   onGoToDiscover: () => void;
+}
+
+/** Short, relative timestamps read better than dates in a conversation list. */
+function relativeTime(iso: string): string {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`;
+  if (minutes < 60 * 24 * 7) return `${Math.floor(minutes / 1440)}d`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 export const MatchesList: React.FC<MatchesListProps> = ({
@@ -29,7 +39,7 @@ export const MatchesList: React.FC<MatchesListProps> = ({
             Mutual Connections
           </h3>
           <p className="text-xs text-[#7A766E] leading-relaxed font-normal">
-            When you and another member like each other, you match here and can exchange direct WhatsApp connections safely.
+            When you and another member like each other, you match here and can message each other here.
           </p>
         </div>
         <div className="pt-2">
@@ -79,65 +89,99 @@ export const MatchesList: React.FC<MatchesListProps> = ({
         <h2 className="text-xl font-black text-[#111111] tracking-tight font-sans">
           Your Connections
         </h2>
-        <p className="text-xs text-[#7A766E] font-medium">
+        <p className="text-xs text-[var(--color-stone-dark)] font-medium">
           {matches.length} mutual {matches.length === 1 ? 'match' : 'matches'}
+          {matches.some((m) => m.unreadCount > 0) && (
+            <span className="text-[var(--color-arrow-orange)] font-bold">
+              {' '}
+              · {matches.filter((m) => m.unreadCount > 0).length} unread
+            </span>
+          )}
         </p>
       </div>
 
-      <div className="divide-y divide-[#D9D6CF] bg-[#FFFFFF] rounded-[28px] border border-[#D9D6CF] overflow-hidden shadow-xs">
+      <div className="divide-y divide-[var(--color-border)] bg-[var(--color-surface)] rounded-[28px] border border-[var(--color-border)] overflow-hidden shadow-xs">
         {matches.map((item) => {
           const profile = item.partnerProfile;
-          const photo = profile.photos[0] || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
-          const matchDate = new Date(item.matchedAt).toLocaleDateString(undefined, {
-            month: 'short',
-            day: 'numeric',
-          });
+          const photo = profile.photos[0];
+          const stamp = item.lastMessage?.createdAt || item.matchedAt;
+          const unread = item.unreadCount > 0;
 
           return (
-            <div
+            <button
               key={item.id}
+              type="button"
               onClick={() => onSelectMatch(item)}
-              className="p-4 flex items-center gap-4 hover:bg-[#FAF8F4] transition-colors cursor-pointer group"
+              className="w-full text-left p-4 flex items-center gap-4 hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer group"
             >
-              {/* Avatar */}
-              <div className="relative w-14 h-14 rounded-2xl overflow-hidden shrink-0 bg-[#EBE8E1] border border-[#D9D6CF]">
-                <img
-                  src={photo}
-                  alt={profile.name}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
+              <div className="relative w-14 h-14 rounded-2xl overflow-hidden shrink-0 bg-[var(--color-stone-light)] border border-[var(--color-border)] flex items-center justify-center">
+                {photo ? (
+                  <img src={photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <span className="text-lg font-black text-[var(--color-stone-dark)]">
+                    {profile.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                {unread && (
+                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1.5 rounded-full bg-[var(--color-arrow-orange)] text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-[var(--color-surface)]">
+                    {item.unreadCount > 9 ? '9+' : item.unreadCount}
+                  </span>
+                )}
               </div>
 
-              {/* Info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-baseline justify-between gap-1">
-                  <h3 className="text-base font-bold text-[#111111] truncate group-hover:text-[#E85D2A] transition-colors">
-                    {profile.name}, <span className="font-normal text-[#7A766E]">{profile.age}</span>
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3
+                    className={`text-base truncate transition-colors group-hover:text-[var(--color-arrow-orange)] ${
+                      unread ? 'font-black text-[var(--color-ink)]' : 'font-bold text-[var(--color-ink)]'
+                    }`}
+                  >
+                    {profile.name}
+                    {profile.age ? (
+                      <span className="font-normal text-[var(--color-stone-dark)]">, {profile.age}</span>
+                    ) : null}
                   </h3>
-                  <span className="text-[10px] text-[#7A766E] shrink-0 font-medium">
-                    {matchDate}
+                  <span className="text-[10px] text-[var(--color-stone-dark)] shrink-0 font-medium">
+                    {relativeTime(stamp)}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1 text-xs text-[#7A766E] mt-0.5 truncate">
-                  <MapPin size={12} className="text-[#E85D2A] shrink-0" />
-                  <span className="truncate">{profile.location}</span>
-                </div>
+                {item.lastMessage ? (
+                  <p
+                    className={`text-xs mt-0.5 truncate ${
+                      unread
+                        ? 'text-[var(--color-ink)] font-semibold'
+                        : 'text-[var(--color-stone-dark)]'
+                    }`}
+                  >
+                    {item.lastMessage.isMine && <span className="text-[var(--color-stone-dark)]">You: </span>}
+                    {item.lastMessage.body}
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-1 text-xs text-[var(--color-stone-dark)] mt-0.5 truncate">
+                    {profile.location ? (
+                      <>
+                        <MapPin size={12} className="text-[var(--color-arrow-orange)] shrink-0" />
+                        <span className="truncate">{profile.location}</span>
+                      </>
+                    ) : (
+                      <span className="italic">Say hello</span>
+                    )}
+                  </div>
+                )}
 
-                {profile.allowWhatsApp && (
-                  <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[#17352F] mt-1.5 bg-[#EAF1EF] border border-[#C5DCD6] px-2 py-0.5 rounded-full">
+                {profile.allowWhatsApp && !item.lastMessage && (
+                  <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--color-forest)] mt-1.5 bg-[#EAF1EF] border border-[#C5DCD6] px-2 py-0.5 rounded-full">
                     <MessageCircle size={10} className="text-[#25D366]" />
-                    <span>WhatsApp Available</span>
+                    <span>Open to WhatsApp</span>
                   </div>
                 )}
               </div>
 
-              {/* Chevron Arrow */}
-              <div className="text-[#7A766E] group-hover:text-[#111111] group-hover:translate-x-0.5 transition-all">
+              <div className="text-[var(--color-stone-dark)] group-hover:text-[var(--color-ink)] group-hover:translate-x-0.5 transition-all">
                 <ChevronRight size={18} />
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

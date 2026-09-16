@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserProfile, MatchRecord } from '../../types';
 import { Modal } from '../ui/Modal';
+import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { MessageCircle, Compass } from 'lucide-react';
 
@@ -11,6 +12,7 @@ interface MatchCelebrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onContinueDiscover: () => void;
+  onOpenConversation?: () => void;
 }
 
 export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
@@ -19,25 +21,12 @@ export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
   isOpen,
   onClose,
   onContinueDiscover,
+  onOpenConversation,
 }) => {
   if (!matchedProfile) return null;
 
-  const currentPhoto = currentUser.photos[0] || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
-  const matchedPhoto = matchedProfile.photos[0] || 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=400&q=80';
-
-  const handleOpenWhatsApp = () => {
-    if (!matchedProfile.whatsappNumber) {
-      // Safe fallback if number not provided
-      window.open('https://web.whatsapp.com/', '_blank', 'noopener,noreferrer');
-      return;
-    }
-    // Format sanitized number for WhatsApp API
-    const cleaned = matchedProfile.whatsappNumber.replace(/[^0-9]/g, '');
-    const text = encodeURIComponent(
-      `Hi ${matchedProfile.name}, we matched on ARROW! Great to connect.`
-    );
-    window.open(`https://wa.me/${cleaned}?text=${text}`, '_blank', 'noopener,noreferrer');
-  };
+  const currentPhoto = currentUser.photos[0];
+  const matchedPhoto = matchedProfile.photos[0];
 
   return (
     <Modal
@@ -64,14 +53,12 @@ export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
 
         {/* Dual Avatars with Arrow */}
         <div className="flex items-center justify-center gap-3 py-3">
-          <div className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-[#111111] shadow-md">
-            <img
-              src={currentPhoto}
-              alt={currentUser.name}
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </div>
+          <Avatar
+            name={currentUser.name}
+            src={currentPhoto}
+            size="lg"
+            className="border-2 border-[var(--color-ink)] shadow-md"
+          />
 
           <div className="flex flex-col items-center">
             <span className="text-[#E85D2A] font-black text-2xl animate-pulse">
@@ -79,41 +66,35 @@ export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
             </span>
           </div>
 
-          <div className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-[#E85D2A] shadow-md">
-            <img
-              src={matchedPhoto}
-              alt={matchedProfile.name}
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </div>
+          <Avatar
+            name={matchedProfile.name}
+            src={matchedPhoto}
+            size="lg"
+            className="border-2 border-[var(--color-arrow-orange)] shadow-md"
+          />
         </div>
 
-        {/* WhatsApp Connection Action or Notice */}
+        {/* The next step is a message, not a phone number. */}
         <div className="space-y-3 pt-2">
-          {matchedProfile.allowWhatsApp && (
-            <div className="space-y-2">
-              <Button
-                variant="primary"
-                fullWidth
-                size="lg"
-                onClick={handleOpenWhatsApp}
-                icon={<MessageCircle size={18} className="text-[#25D366]" />}
-                arrow="up-right"
-              >
-                Continue to WhatsApp
-              </Button>
-              <p className="text-[11px] text-[#7A766E] leading-tight">
-                Secure connection via WhatsApp. Phone numbers are never exposed publicly on profiles.
-              </p>
-            </div>
-          )}
+          <Button
+            variant="primary"
+            fullWidth
+            size="lg"
+            onClick={() => {
+              onClose();
+              onOpenConversation?.();
+            }}
+            icon={<MessageCircle size={18} />}
+            arrow="right"
+          >
+            Send {matchedProfile.name} a message
+          </Button>
 
-          {!matchedProfile.allowWhatsApp && (
-            <div className="p-3 bg-[#FAF8F4] rounded-xl border border-[#E2DDD5] text-xs text-[#7A766E]">
-              {matchedProfile.name} will appear in your Matches list.
-            </div>
-          )}
+          <p className="text-[11px] text-[var(--color-stone-dark)] leading-relaxed">
+            {matchedProfile.allowWhatsApp
+              ? `${matchedProfile.name} is also open to WhatsApp. You can move there from the conversation whenever you both want to.`
+              : `${matchedProfile.name} is now in your matches.`}
+          </p>
 
           <Button
             variant="ghost"

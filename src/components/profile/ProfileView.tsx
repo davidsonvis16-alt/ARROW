@@ -123,8 +123,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   }
 
   const photos = currentUser.photos && currentUser.photos.length > 0
-    ? currentUser.photos
-    : ['https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80'];
+    ? currentUser.photos : [];
 
   return (
     <div className="space-y-6 pb-24">
@@ -155,12 +154,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       <div className="bg-[#FFFFFF] rounded-[28px] border border-[#D9D6CF] overflow-hidden shadow-xs">
         {/* Photo Gallery Banner */}
         <div className="relative aspect-[4/3] bg-[#EBE8E1]">
-          <img
-            src={photos[0]}
-            alt={currentUser.name}
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
+          {photos[0] ? (
+            <img
+              src={photos[0]}
+              alt={currentUser.name}
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={onEditPhotos}
+              className="w-full h-full flex flex-col items-center justify-center gap-2 text-[var(--color-stone-dark)] hover:text-[var(--color-ink)] transition-colors"
+            >
+              <Camera size={28} />
+              <span className="text-xs font-bold uppercase tracking-widest">Add your first photo</span>
+              <span className="text-[11px]">Profiles with photos get far more arrows</span>
+            </button>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 
           {/* Quick Photo Count Badge */}
