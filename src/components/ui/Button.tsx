@@ -30,17 +30,17 @@ export const Button: React.FC<ButtonProps> = ({
 
   const variantStyles = {
     primary:
-      'bg-[#111111] text-[#F5F3EE] hover:bg-[#262626] shadow-sm active:bg-black',
+      'bg-[var(--color-ink)] text-[var(--color-offwhite)] hover:bg-[var(--color-ink-soft)] shadow-sm active:brightness-90',
     secondary:
-      'bg-[#E85D2A] text-white hover:bg-[#D05325] shadow-md hover:shadow-lg',
+      'bg-[var(--color-arrow-orange)] text-white hover:bg-[var(--color-arrow-orange-hover)] shadow-md hover:shadow-lg',
     outline:
-      'bg-transparent border border-[#111111] text-[#111111] hover:bg-[#111111] hover:text-[#F5F3EE]',
+      'bg-transparent border border-[var(--color-ink)] text-[var(--color-ink)] hover:bg-[var(--color-ink)] hover:text-[var(--color-offwhite)]',
     ghost:
-      'bg-transparent text-[#111111] hover:bg-[#EBE8E1]',
+      'bg-transparent text-[var(--color-ink)] hover:bg-[var(--color-stone-light)]',
     danger:
-      'bg-[#D9383A] text-white hover:bg-[#BF2B2D]',
+      'bg-[var(--color-danger)] text-white hover:bg-[var(--color-danger)]',
     glass:
-      'bg-[#D9D6CF]/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30',
+      'bg-[var(--color-border)]/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30',
   };
 
   const widthStyle = fullWidth ? 'w-full' : '';

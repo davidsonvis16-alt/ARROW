@@ -131,20 +131,20 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       <form onSubmit={handleSave} className="space-y-6 pb-4">
         {/* Name */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[#111111]">Full Name</label>
+          <label className="text-xs font-bold text-[var(--color-ink)]">Full Name</label>
           <input
             type="text"
             required
             maxLength={40}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-[#FFFFFF] text-xs text-[#111111]"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
           />
         </div>
 
         {/* Location */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[#111111]">
+          <label className="text-xs font-bold text-[var(--color-ink)]">
             City / General Location
           </label>
           <input
@@ -154,18 +154,18 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             placeholder="e.g. Nairobi, Kenya"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-[#FFFFFF] text-xs text-[#111111]"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
           />
-          <p className="text-[10px] text-[#7A766E]">
+          <p className="text-[10px] text-[var(--color-stone-dark)]">
             General location only. Specific addresses are never stored or requested.
           </p>
         </div>
 
         {/* Bio */}
         <div className="space-y-1.5">
-          <div className="flex justify-between items-center text-xs font-bold text-[#111111]">
+          <div className="flex justify-between items-center text-xs font-bold text-[var(--color-ink)]">
             <label>Short Bio</label>
-            <span className="text-[10px] text-[#7A766E] font-normal">
+            <span className="text-[10px] text-[var(--color-stone-dark)] font-normal">
               {bio.length}/300
             </span>
           </div>
@@ -175,13 +175,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             placeholder="A few words about your mindset, passions, or current focus..."
             value={bio}
             onChange={(e) => setBio(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-[#FFFFFF] text-xs text-[#111111] leading-relaxed resize-none"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)] leading-relaxed resize-none"
           />
         </div>
 
         {/* Looking For */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-[#111111]">Looking For</label>
+          <label className="text-xs font-bold text-[var(--color-ink)]">Looking For</label>
           <div className="flex flex-wrap gap-1.5">
             {LOOKING_FOR_OPTIONS.map((opt) => (
               <Badge
@@ -198,9 +198,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
         {/* Interests */}
         <div className="space-y-2">
-          <div className="flex justify-between items-center text-xs font-bold text-[#111111]">
+          <div className="flex justify-between items-center text-xs font-bold text-[var(--color-ink)]">
             <label>Interests & Passions</label>
-            <span className="text-[10px] text-[#7A766E] font-normal">
+            <span className="text-[10px] text-[var(--color-stone-dark)] font-normal">
               {interests.length}/8 selected
             </span>
           </div>
@@ -222,10 +222,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         <div className="space-y-3">
           <div className="flex justify-between items-center">
             <div>
-              <h4 className="text-xs font-bold text-[#111111]">
+              <h4 className="text-xs font-bold text-[var(--color-ink)]">
                 Profile Prompts (Up to 3)
               </h4>
-              <p className="text-[10px] text-[#7A766E]">
+              <p className="text-[10px] text-[var(--color-stone-dark)]">
                 Add personality to your profile
               </p>
             </div>
@@ -233,7 +233,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               <button
                 type="button"
                 onClick={addPrompt}
-                className="text-xs font-bold text-[#E85D2A] flex items-center gap-1 hover:underline"
+                className="text-xs font-bold text-[var(--color-arrow-orange)] flex items-center gap-1 hover:underline"
               >
                 <Plus size={13} />
                 <span>Add Prompt</span>
@@ -245,7 +245,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             {prompts.map((prompt, idx) => (
               <div
                 key={prompt.id || idx}
-                className="p-3.5 bg-[#FAF8F4] rounded-2xl border border-[#E2DDD5] space-y-2"
+                className="p-3.5 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] space-y-2"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center flex-1">
@@ -254,7 +254,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                       onChange={(e) =>
                         updatePrompt(idx, e.target.value, prompt.answer)
                       }
-                      className="w-full text-xs font-bold text-[#111111] bg-transparent border-none focus:outline-none cursor-pointer"
+                      className="w-full text-xs font-bold text-[var(--color-ink)] bg-transparent border-none focus:outline-none cursor-pointer"
                     >
                       {AVAILABLE_PROMPT_QUESTIONS.map((q) => (
                         <option key={q} value={q}>
@@ -266,7 +266,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   <button
                     type="button"
                     onClick={() => removePrompt(idx)}
-                    className="p-1 text-[#7A766E] hover:text-[#D9383A] transition-colors"
+                    className="p-1 text-[var(--color-stone-dark)] hover:text-[var(--color-danger)] transition-colors"
                   >
                     <Trash2 size={13} />
                   </button>
@@ -280,7 +280,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   onChange={(e) =>
                     updatePrompt(idx, prompt.question, e.target.value)
                   }
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-[#E2DDD5] text-xs text-[#111111]"
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-xs text-[var(--color-ink)]"
                 />
               </div>
             ))}
@@ -288,7 +288,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3 pt-3 border-t border-[#E2DDD5]">
+        <div className="flex items-center gap-3 pt-3 border-t border-[var(--color-border-subtle)]">
           <Button
             type="button"
             variant="ghost"

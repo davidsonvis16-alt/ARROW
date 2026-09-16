@@ -387,15 +387,15 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           <div className="brand-wordmark text-lg">
             ARROW <span className="brand-arrow-glyph">→</span>
           </div>
-          <span className="text-xs font-bold text-[#7A766E]">
+          <span className="text-xs font-bold text-[var(--color-stone-dark)]">
             Step {step} of {totalSteps}
           </span>
         </div>
 
         {/* Progress Bar */}
-        <div className="w-full h-1 bg-[#EBE8E1] rounded-full overflow-hidden">
+        <div className="w-full h-1 bg-[var(--color-stone-light)] rounded-full overflow-hidden">
           <div
-            className="h-full bg-[#111111] transition-all duration-300 rounded-full"
+            className="h-full bg-[var(--color-ink)] transition-all duration-300 rounded-full"
             style={{ width: `${(step / totalSteps) * 100}%` }}
           />
         </div>
@@ -406,10 +406,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         {step === 1 && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="space-y-1">
-              <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+              <h2 className="text-2xl font-black text-[var(--color-ink)] tracking-tight">
                 Create Your Profile
               </h2>
-              <p className="text-xs text-[#7A766E]">
+              <p className="text-xs text-[var(--color-stone-dark)]">
                 Sign in with Google to get started.
               </p>
             </div>
@@ -417,11 +417,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             <div className="space-y-3.5">
               {/* Google Sign In */}
               {isSupabaseConfigured && (
-                <div className="p-3 bg-white rounded-2xl border border-[#D9D6CF] space-y-2.5">
+                <div className="p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] space-y-2.5">
                   <div className="relative flex items-center gap-2">
-                    <div className="flex-1 h-px bg-[#E2DDD5]" />
-                    <span className="text-[10px] text-[#7A766E] font-semibold uppercase tracking-wider">Google</span>
-                    <div className="flex-1 h-px bg-[#E2DDD5]" />
+                    <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+                    <span className="text-[10px] text-[var(--color-stone-dark)] font-semibold uppercase tracking-wider">Google</span>
+                    <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
                   </div>
 
                   <Button
@@ -435,7 +435,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   </Button>
 
                   {existingAuthUserId && (
-                    <p className="text-[10px] text-[#17352F] font-semibold">
+                    <p className="text-[10px] text-[var(--color-forest)] font-semibold">
                       Signed in as {authEmail}
                     </p>
                   )}
@@ -443,33 +443,33 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               )}
 
               <div className="flex items-center gap-2">
-                <div className="flex-1 h-px bg-[#E2DDD5]" />
-                <span className="text-[10px] text-[#7A766E] font-semibold uppercase tracking-wider">or Email</span>
-                <div className="flex-1 h-px bg-[#E2DDD5]" />
+                <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+                <span className="text-[10px] text-[var(--color-stone-dark)] font-semibold uppercase tracking-wider">or Email</span>
+                <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
               </div>
 
               {isSupabaseConfigured && (
-                <form onSubmit={handleEmailSignUp} className="p-3 bg-white rounded-2xl border border-[#D9D6CF] space-y-2">
+                <form onSubmit={handleEmailSignUp} className="p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] space-y-2">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#111111]">Email</label>
+                    <label className="text-xs font-bold text-[var(--color-ink)]">Email</label>
                     <input
                       type="email"
                       required
                       placeholder="you@example.com"
                       value={signupEmail}
                       onChange={(e) => setSignupEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-[#111111]">Password</label>
+                    <label className="text-xs font-bold text-[var(--color-ink)]">Password</label>
                     <input
                       type="password"
                       required
                       placeholder="Min 6 characters"
                       value={signupPassword}
                       onChange={(e) => setSignupPassword(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
                     />
                   </div>
                   <Button
@@ -484,7 +484,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               )}
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#111111]">
+                <label className="text-xs font-bold text-[var(--color-ink)]">
                   First & Last Name
                 </label>
                 <input
@@ -493,13 +493,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   placeholder="e.g. Maya Chen"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
                 />
               </div>
 
               {/* Gender */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#111111]">Gender</label>
+                <label className="text-xs font-bold text-[var(--color-ink)]">Gender</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(['woman', 'man', 'non-binary'] as const).map((g) => (
                     <button
@@ -508,8 +508,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                       onClick={() => setGender(g)}
                       className={`py-2 px-2.5 rounded-xl border text-xs font-semibold capitalize transition-colors ${
                         gender === g
-                          ? 'bg-[#111111] text-white border-[#111111]'
-                          : 'bg-white text-[#111111] border-[#E2DDD5]'
+                          ? 'bg-[var(--color-ink)] text-white border-[var(--color-ink)]'
+                          : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border-subtle)]'
                       }`}
                     >
                       {g}
@@ -520,7 +520,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
               {/* Location */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#111111]">
+                <label className="text-xs font-bold text-[var(--color-ink)]">
                   City / Location
                 </label>
                 <input
@@ -529,7 +529,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   placeholder="e.g. London, UK"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
                 />
               </div>
             </div>
@@ -539,26 +539,26 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         {step === 2 && (
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
-              <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+              <h2 className="text-2xl font-black text-[var(--color-ink)] tracking-tight">
                 Verify Your Email
               </h2>
-              <p className="text-xs text-[#7A766E]">
+              <p className="text-xs text-[var(--color-stone-dark)]">
                 Confirm your email address to continue.
               </p>
             </div>
 
-            <div className="p-4 bg-white rounded-2xl border border-[#D9D6CF] space-y-3 shadow-xs">
+            <div className="p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] space-y-3 shadow-xs">
               {isEmailVerified ? (
-                <div className="flex items-center gap-2 text-xs text-[#17352F]">
+                <div className="flex items-center gap-2 text-xs text-[var(--color-forest)]">
                   <ShieldAlert size={16} />
                   <span className="font-bold">Email verified successfully</span>
                 </div>
               ) : (
                 <>
-                  <p className="text-xs text-[#111111]">
+                  <p className="text-xs text-[var(--color-ink)]">
                     Check your email inbox for a verification link from Supabase Auth.
                   </p>
-                  <p className="text-[10px] text-[#7A766E]">
+                  <p className="text-[10px] text-[var(--color-stone-dark)]">
                     Sent to: {authEmail || 'your Google email'}
                   </p>
                   <div className="pt-2 space-y-2">
@@ -589,17 +589,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         {step === 3 && (
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
-              <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+              <h2 className="text-2xl font-black text-[var(--color-ink)] tracking-tight">
                 Before you join Arrow
               </h2>
-              <p className="text-xs text-[#7A766E]">
+              <p className="text-xs text-[var(--color-stone-dark)]">
                 Arrow is an 18+ dating app.
               </p>
             </div>
 
-            <div className="p-4 bg-white rounded-2xl border border-[#D9D6CF] space-y-4 shadow-xs">
+            <div className="p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] space-y-4 shadow-xs">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-[#111111]">
+                <label className="text-xs font-bold text-[var(--color-ink)]">
                   Date of Birth
                 </label>
                 <input
@@ -612,10 +612,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                     setHasConfirmedAge(false);
                     setVerificationError('');
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
                 />
-                <div className="flex items-center gap-1 text-[10px] text-[#7A766E]">
-                  <Lock size={11} className="text-[#17352F]" />
+                <div className="flex items-center gap-1 text-[10px] text-[var(--color-stone-dark)]">
+                  <Lock size={11} className="text-[var(--color-forest)]" />
                   <span>Your birthdate is encrypted and never displayed publicly.</span>
                 </div>
               </div>
@@ -624,7 +624,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 <div className="space-y-2">
                   <span
                     className={`text-[11px] font-bold ${
-                      isEligibleAdult ? 'text-[#17352F]' : 'text-[#D9383A]'
+                      isEligibleAdult ? 'text-[var(--color-forest)]' : 'text-[var(--color-danger)]'
                     }`}
                   >
                     {calculatedAge} yrs {isEligibleAdult ? '✓ (18+)' : '✗ (Must be 18+)'}
@@ -636,9 +636,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                       checked={hasConfirmedAge}
                       onChange={(e) => setHasConfirmedAge(e.target.checked)}
                       disabled={!isEligibleAdult}
-                      className="mt-0.5 w-4 h-4 accent-[#17352F] cursor-pointer"
+                      className="mt-0.5 w-4 h-4 accent-[var(--color-forest)] cursor-pointer"
                     />
-                    <span className="text-xs text-[#111111]">
+                    <span className="text-xs text-[var(--color-ink)]">
                       I confirm that I am 18 years old or older.
                     </span>
                   </label>
@@ -646,7 +646,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               )}
 
               {verificationError && (
-                <p className="text-xs text-[#D9383A] font-medium">{verificationError}</p>
+                <p className="text-xs text-[var(--color-danger)] font-medium">{verificationError}</p>
               )}
 
               <Button
@@ -664,16 +664,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         {step === 4 && (
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
-              <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+              <h2 className="text-2xl font-black text-[var(--color-ink)] tracking-tight">
                 Profile Photo
               </h2>
-              <p className="text-xs text-[#7A766E]">
+              <p className="text-xs text-[var(--color-stone-dark)]">
                 Add a natural portrait that represents you well.
               </p>
             </div>
 
             {/* Photo Preview & Selection */}
-            <div className="relative aspect-[4/5] rounded-[24px] overflow-hidden bg-[#EBE8E1] border-2 border-[#111111] shadow-md">
+            <div className="relative aspect-[4/5] rounded-[24px] overflow-hidden bg-[var(--color-stone-light)] border-2 border-[var(--color-ink)] shadow-md">
               {photos[0] ? (
                 <img
                   src={photos[0]}
@@ -682,7 +682,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-[#7A766E]">
+                <div className="w-full h-full flex flex-col items-center justify-center text-[var(--color-stone-dark)]">
                   <Camera size={32} className="mb-2 opacity-60" />
                   <span className="text-xs font-bold">No photo selected</span>
                 </div>
@@ -727,7 +727,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               </div>
             </div>
 
-            <p className="text-[11px] text-[#7A766E] text-center">
+            <p className="text-[11px] text-[var(--color-stone-dark)] text-center">
               Take a selfie or upload a clear portrait. This helps ensure genuine profiles.
             </p>
           </div>
@@ -736,17 +736,17 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         {step === 5 && (
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
-              <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+              <h2 className="text-2xl font-black text-[var(--color-ink)] tracking-tight">
                 Interests & Intent
               </h2>
-              <p className="text-xs text-[#7A766E]">
+              <p className="text-xs text-[var(--color-stone-dark)]">
                 What are you curious about and seeking?
               </p>
             </div>
 
             {/* Looking For */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-[#111111]">
+              <label className="text-xs font-bold text-[var(--color-ink)]">
                 What are you looking for?
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -765,9 +765,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
             {/* Interests */}
             <div className="space-y-2">
-              <div className="flex justify-between items-center text-xs font-bold text-[#111111]">
+              <div className="flex justify-between items-center text-xs font-bold text-[var(--color-ink)]">
                 <label>Select Your Passions</label>
-                <span className="text-[10px] text-[#7A766E]">
+                <span className="text-[10px] text-[var(--color-stone-dark)]">
                   {interests.length}/6
                 </span>
               </div>
@@ -787,7 +787,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
             {/* Short Bio */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#111111]">
+              <label className="text-xs font-bold text-[var(--color-ink)]">
                 Short Bio (Optional)
               </label>
               <textarea
@@ -796,7 +796,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 placeholder="A couple sentences introducing yourself..."
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111] resize-none"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)] resize-none"
               />
             </div>
           </div>
@@ -805,22 +805,22 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         {step === 6 && (
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
-              <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+              <h2 className="text-2xl font-black text-[var(--color-ink)] tracking-tight">
                 Connection Method
               </h2>
-              <p className="text-xs text-[#7A766E]">
+              <p className="text-xs text-[var(--color-stone-dark)]">
                 Choose how you want to continue after a mutual match.
               </p>
             </div>
 
             {/* WhatsApp Option */}
-            <div className="p-4 bg-white rounded-2xl border border-[#E2DDD5] space-y-3 shadow-xs">
+            <div className="p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border-subtle)] space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-bold text-[#111111]">
+                  <h3 className="text-xs font-bold text-[var(--color-ink)]">
                     Enable WhatsApp Connection
                   </h3>
-                  <p className="text-[11px] text-[#7A766E]">
+                  <p className="text-[11px] text-[var(--color-stone-dark)]">
                     Direct connection button upon mutual match
                   </p>
                 </div>
@@ -828,13 +828,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   type="checkbox"
                   checked={allowWhatsApp}
                   onChange={(e) => setAllowWhatsApp(e.target.checked)}
-                  className="w-5 h-5 accent-[#17352F] cursor-pointer"
+                  className="w-5 h-5 accent-[var(--color-forest)] cursor-pointer"
                 />
               </div>
 
               {allowWhatsApp && (
-                <div className="space-y-1.5 pt-1 border-t border-[#EFECE6]">
-                  <label className="text-xs font-bold text-[#111111]">
+                <div className="space-y-1.5 pt-1 border-t border-[var(--color-border-subtle)]">
+                  <label className="text-xs font-bold text-[var(--color-ink)]">
                     WhatsApp Phone Number
                   </label>
                   <input
@@ -842,9 +842,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                     placeholder="+44 7000 000000"
                     value={whatsappNumber}
                     onChange={(e) => setWhatsappNumber(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] text-xs text-[#111111] font-mono"
+                    className="w-full px-3.5 py-2 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-subtle)] text-xs text-[var(--color-ink)] font-mono"
                   />
-                  <p className="text-[10px] text-[#7A766E]">
+                  <p className="text-[10px] text-[var(--color-stone-dark)]">
                     Your number is never shown publicly in discovery cards.
                   </p>
                 </div>
@@ -852,9 +852,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             </div>
 
             {/* Privacy Box */}
-            <div className="p-3.5 bg-[#FAF8F4] rounded-2xl border border-[#E2DDD5] text-xs space-y-1">
-              <h4 className="font-bold text-[#111111]">ARROW Security Standard</h4>
-              <p className="text-[#7A766E] leading-relaxed">
+            <div className="p-3.5 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] text-xs space-y-1">
+              <h4 className="font-bold text-[var(--color-ink)]">ARROW Security Standard</h4>
+              <p className="text-[var(--color-stone-dark)] leading-relaxed">
                 By entering ARROW, you confirm you are 18+ and agree to respectful, genuine interactions backed by Row-Level Security.
               </p>
             </div>
@@ -863,7 +863,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex items-center gap-3 pt-4 border-t border-[#E2DDD5]">
+      <div className="flex items-center gap-3 pt-4 border-t border-[var(--color-border-subtle)]">
         {step > 1 ? (
           <Button
             variant="ghost"

@@ -431,11 +431,12 @@ function ArrowApp() {
     showToast(isPaused ? 'Your profile is hidden from discovery' : 'You are visible again', 'info');
   };
 
-  const handleUnblock = async (userId: string) => {
-    await api.unblockUser(userId);
-    showToast('Unblocked', 'info');
-    refreshAppData();
+  const handleToggleOnlineStatus = async (show: boolean) => {
+    if (!currentUser) return;
+    const updated = await api.setVisibility(Boolean(currentUser.isPaused), show);
+    if (updated) setCurrentUser(updated);
   };
+
 
   // Account Management
   const handleLogOut = async () => {
@@ -491,13 +492,13 @@ function ArrowApp() {
     discoverProfiles.length > cardIndex ? discoverProfiles[cardIndex] : null;
 
   return (
-    <div className="flex h-screen w-full bg-[#F5F3EE] font-sans text-[#111111] overflow-hidden select-none">
+    <div className="flex h-screen w-full bg-[var(--color-offwhite)] font-sans text-[var(--color-ink)] overflow-hidden select-none">
       {/* Left Navigation Sidebar for Desktop (Professional Polish Theme) */}
-      <aside className="hidden lg:flex w-72 bg-[#111111] text-white flex-col justify-between py-10 px-8 shrink-0 z-20">
+      <aside className="hidden lg:flex w-72 bg-[var(--color-rail)] text-[var(--color-rail-ink)] flex-col justify-between py-10 px-8 shrink-0 z-20">
         {/* Brand Header */}
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-            <div className="w-6 h-6 bg-[#E85D2A] flex items-center justify-center transform rotate-45 rounded-[3px] shadow-sm">
+            <div className="w-6 h-6 bg-[var(--color-arrow-orange)] flex items-center justify-center transform rotate-45 rounded-[3px] shadow-sm">
               <div className="w-2 h-2 border-t-2 border-r-2 border-white transform -rotate-45 ml-[-1px] mt-[1px]" />
             </div>
             <span className="text-2xl font-bold tracking-tighter uppercase font-mono">
@@ -522,7 +523,7 @@ function ArrowApp() {
           >
             <span
               className={`w-1.5 h-1.5 rounded-full transition-all ${
-                currentTab === 'discover' ? 'bg-[#E85D2A]' : 'bg-transparent'
+                currentTab === 'discover' ? 'bg-[var(--color-arrow-orange)]' : 'bg-transparent'
               }`}
             />
             <span>Discover</span>
@@ -540,13 +541,13 @@ function ArrowApp() {
             <div className="flex items-center gap-4">
               <span
                 className={`w-1.5 h-1.5 rounded-full transition-all ${
-                  currentTab === 'likes' ? 'bg-[#E85D2A]' : 'bg-transparent'
+                  currentTab === 'likes' ? 'bg-[var(--color-arrow-orange)]' : 'bg-transparent'
                 }`}
               />
               <span>Likes</span>
             </div>
             {incomingLikes.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-[#E85D2A] text-white text-[10px] font-bold">
+              <span className="px-2 py-0.5 rounded-full bg-[var(--color-arrow-orange)] text-white text-[10px] font-bold">
                 {incomingLikes.length}
               </span>
             )}
@@ -564,7 +565,7 @@ function ArrowApp() {
             <div className="flex items-center gap-4">
               <span
                 className={`w-1.5 h-1.5 rounded-full transition-all ${
-                  currentTab === 'matches' ? 'bg-[#E85D2A]' : 'bg-transparent'
+                  currentTab === 'matches' ? 'bg-[var(--color-arrow-orange)]' : 'bg-transparent'
                 }`}
               />
               <span>Matches</span>
@@ -587,7 +588,7 @@ function ArrowApp() {
           >
             <span
               className={`w-1.5 h-1.5 rounded-full transition-all ${
-                currentTab === 'profile' ? 'bg-[#E85D2A]' : 'bg-transparent'
+                currentTab === 'profile' ? 'bg-[var(--color-arrow-orange)]' : 'bg-transparent'
               }`}
             />
             <span>Profile</span>
@@ -621,7 +622,7 @@ function ArrowApp() {
             <button
               type="button"
               onClick={() => setIsAuthModalOpen(true)}
-              className="w-full flex items-center justify-center gap-2 p-3 rounded-2xl bg-[#E85D2A] hover:bg-[#d44f1f] text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
+              className="w-full flex items-center justify-center gap-2 p-3 rounded-2xl bg-[var(--color-arrow-orange)] hover:bg-[#d44f1f] text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
             >
               <User size={15} />
               <span>Log In / Profile</span>
@@ -678,8 +679,8 @@ function ArrowApp() {
             <section aria-label="Discover Section" className="flex-1 flex flex-col justify-center items-center p-4 md:p-8">
               {isLoadingDiscover ? (
                 <div className="flex-1 flex flex-col items-center justify-center space-y-3 min-h-[60vh]">
-                  <div className="w-8 h-8 border-2 border-[#E85D2A] border-t-transparent rounded-full animate-spin" />
-                  <p className="text-xs font-semibold text-[#7A766E]">
+                  <div className="w-8 h-8 border-2 border-[var(--color-arrow-orange)] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-xs font-semibold text-[var(--color-stone-dark)]">
                     Finding people...
                   </p>
                 </div>
@@ -709,14 +710,14 @@ function ArrowApp() {
               ) : (
                 /* Authentic Clean State when no more profiles exist in feed */
                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 min-h-[60vh]">
-                  <div className="w-16 h-16 rounded-2xl bg-[#FAF8F4] border border-[#D9D6CF] flex items-center justify-center text-[#E85D2A] shadow-xs">
+                  <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-arrow-orange)] shadow-xs">
                     <ArrowRight size={28} strokeWidth={2} />
                   </div>
                   <div className="space-y-1.5 max-w-xs">
-                    <h3 className="text-2xl font-black tracking-tight text-[#111111]">
+                    <h3 className="text-2xl font-black tracking-tight text-[var(--color-ink)]">
                       Ready to Discover.
                     </h3>
-                    <p className="text-xs text-[#7A766E] leading-relaxed">
+                    <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed">
                       {currentUser
                         ? "You've reviewed all available profiles matching your preferences."
                         : "You're exploring ARROW in guest mode. Log in or create a profile to start sending Arrows and connecting."}
@@ -820,14 +821,14 @@ function ArrowApp() {
       </main>
 
       {/* Right Activity & Connection Sidebar (Desktop Professional Polish) */}
-      <aside className="hidden xl:flex w-80 bg-white border-l border-[#D9D6CF] flex-col shrink-0 overflow-y-auto">
+      <aside className="hidden xl:flex w-80 bg-[var(--color-surface)] border-l border-[var(--color-border)] flex-col shrink-0 overflow-y-auto">
         {/* Activity Section */}
-        <div className="p-7 border-b border-[#D9D6CF]">
+        <div className="p-7 border-b border-[var(--color-border)]">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-[#111111]/50">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--color-ink)]/50">
               Activity & Matches
             </h3>
-            <span className="text-[11px] font-bold text-[#E85D2A]">
+            <span className="text-[11px] font-bold text-[var(--color-arrow-orange)]">
               {matches.length + incomingLikes.length} Total
             </span>
           </div>
@@ -838,9 +839,9 @@ function ArrowApp() {
                 <div
                   key={m.id}
                   onClick={() => setSelectedMatch(m)}
-                  className="flex items-center gap-3 p-2 rounded-2xl hover:bg-[#FAF8F4] transition-colors cursor-pointer border border-transparent hover:border-[#D9D6CF]"
+                  className="flex items-center gap-3 p-2 rounded-2xl hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer border border-transparent hover:border-[var(--color-border)]"
                 >
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 ring-2 ring-[#E85D2A] ring-offset-2">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 ring-2 ring-[var(--color-arrow-orange)] ring-offset-2">
                     <img
                       src={
                         m.partnerProfile.photos[0]
@@ -852,10 +853,10 @@ function ArrowApp() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between">
-                      <p className="text-xs font-bold text-[#111111] truncate">{m.partnerProfile.name}</p>
-                      <span className="text-[10px] font-bold text-[#17352F] uppercase">Match</span>
+                      <p className="text-xs font-bold text-[var(--color-ink)] truncate">{m.partnerProfile.name}</p>
+                      <span className="text-[10px] font-bold text-[var(--color-forest)] uppercase">Match</span>
                     </div>
-                    <p className="text-[11px] text-[#7A766E] truncate">{m.partnerProfile.location}</p>
+                    <p className="text-[11px] text-[var(--color-stone-dark)] truncate">{m.partnerProfile.location}</p>
                   </div>
                 </div>
               ))}
@@ -866,9 +867,9 @@ function ArrowApp() {
                   onClick={() => {
                     setDetailProfile(l.profile);
                   }}
-                  className="flex items-center gap-3 p-2 rounded-2xl hover:bg-[#FAF8F4] transition-colors cursor-pointer"
+                  className="flex items-center gap-3 p-2 rounded-2xl hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
                 >
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 border border-[#D9D6CF]">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 border border-[var(--color-border)]">
                     <img
                       src={
                         l.profile.photos[0]
@@ -880,20 +881,20 @@ function ArrowApp() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between">
-                      <p className="text-xs font-bold text-[#111111] truncate">{l.profile.name}</p>
-                      <span className="text-[10px] font-bold text-[#E85D2A] uppercase">Liked You</span>
+                      <p className="text-xs font-bold text-[var(--color-ink)] truncate">{l.profile.name}</p>
+                      <span className="text-[10px] font-bold text-[var(--color-arrow-orange)] uppercase">Liked You</span>
                     </div>
-                    <p className="text-[11px] text-[#7A766E] truncate">{l.profile.lookingFor || 'Seeking Connection'}</p>
+                    <p className="text-[11px] text-[var(--color-stone-dark)] truncate">{l.profile.lookingFor || 'Seeking Connection'}</p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="text-center py-6 px-2 space-y-1">
-              <p className="text-xs font-semibold text-[#111111]">
+              <p className="text-xs font-semibold text-[var(--color-ink)]">
                 {currentUser ? 'No recent activity' : 'Guest Mode'}
               </p>
-              <p className="text-[11px] text-[#7A766E]">
+              <p className="text-[11px] text-[var(--color-stone-dark)]">
                 {currentUser
                   ? 'Likes and matches will appear here in real-time.'
                   : 'Log in to view incoming likes and active connections.'}
@@ -903,13 +904,13 @@ function ArrowApp() {
         </div>
 
         {/* Direct Connection (WhatsApp) Section */}
-        <div className="flex-1 p-7 bg-[#F5F3EE]/30 flex flex-col justify-between space-y-6">
+        <div className="flex-1 p-7 bg-[var(--color-offwhite)]/30 flex flex-col justify-between space-y-6">
           <div className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-[#111111]/50">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--color-ink)]/50">
               Direct Connection
             </h3>
 
-            <div className="p-5 bg-white rounded-3xl border border-[#D9D6CF] shadow-xs space-y-3">
+            <div className="p-5 bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] shadow-xs space-y-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-green-50 rounded-2xl flex items-center justify-center text-[#25D366] border border-green-100">
                   <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -917,11 +918,11 @@ function ArrowApp() {
                   </svg>
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-[#111111]">Permission-Based</h4>
-                  <p className="text-[10px] text-[#7A766E]">WhatsApp Integration</p>
+                  <h4 className="text-xs font-bold text-[var(--color-ink)]">Permission-Based</h4>
+                  <p className="text-[10px] text-[var(--color-stone-dark)]">WhatsApp Integration</p>
                 </div>
               </div>
-              <p className="text-[11px] text-[#7A766E] leading-relaxed">
+              <p className="text-[11px] text-[var(--color-stone-dark)] leading-relaxed">
                 Connect directly on WhatsApp only after mutual interest. Your phone number is never displayed publicly.
               </p>
               <button
@@ -933,7 +934,7 @@ function ArrowApp() {
                     setIsAuthModalOpen(true);
                   }
                 }}
-                className="w-full py-2.5 px-4 rounded-xl border border-[#111111] bg-transparent text-[#111111] hover:bg-[#111111] hover:text-[#F5F3EE] font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 px-4 rounded-xl border border-[var(--color-ink)] bg-transparent text-[var(--color-ink)] hover:bg-[var(--color-ink)] hover:text-[var(--color-offwhite)] font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <span>
                   {currentUser
@@ -947,9 +948,9 @@ function ArrowApp() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-[#EAF1EF] border border-[#C5DCD6] text-[11px] text-[#17352F] font-medium space-y-1">
+          <div className="p-4 rounded-2xl bg-[var(--color-forest-subtle)] border border-[var(--color-border-subtle)] text-[11px] text-[var(--color-forest)] font-medium space-y-1">
             <p className="font-bold">Human Verified & Protected</p>
-            <p className="text-[#17352F]/80 text-[10px]">
+            <p className="text-[var(--color-forest)]/80 text-[10px]">
               ARROW enforces strict anti-harassment safety checks across all interactions.
             </p>
           </div>
@@ -981,7 +982,7 @@ function ArrowApp() {
 
       {/* Onboarding Flow Full Overlay */}
       {isOnboarding && (
-        <div className="fixed inset-0 z-50 bg-[#F5F3EE] flex flex-col justify-center overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-[var(--color-offwhite)] flex flex-col justify-center overflow-y-auto">
           <OnboardingFlow
             onComplete={handleOnboardingComplete}
             onCancel={() => setIsOnboarding(false)}
@@ -1139,6 +1140,8 @@ function ArrowApp() {
             setIsSettingsOpen(false);
             setIsOnboarding(true);
           }}
+          onTogglePause={handleTogglePause}
+          onToggleOnlineStatus={handleToggleOnlineStatus}
         />
       )}
 

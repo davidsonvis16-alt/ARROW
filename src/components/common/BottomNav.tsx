@@ -47,7 +47,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     <nav
-      className="lg:hidden sticky bottom-0 z-30 w-full bg-[#F5F3EE]/95 backdrop-blur-md border-t border-[#D9D6CF] px-3 py-2 flex items-center justify-around select-none"
+      className="lg:hidden sticky bottom-0 z-30 w-full bg-[var(--color-offwhite)]/95 backdrop-blur-md border-t border-[var(--color-border)] px-3 py-2 flex items-center justify-around select-none"
       aria-label="Main Navigation"
     >
       {tabs.map((tab) => {
@@ -59,8 +59,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             onClick={() => onSelectTab(tab.id)}
             className={`relative flex flex-col items-center justify-center min-w-[72px] min-h-[48px] py-1 px-2 rounded-2xl transition-all duration-150 cursor-pointer ${
               isActive
-                ? 'text-[#111111] font-bold'
-                : 'text-[#7A766E] hover:text-[#111111] font-medium'
+                ? 'text-[var(--color-ink)] font-bold'
+                : 'text-[var(--color-stone-dark)] hover:text-[var(--color-ink)] font-medium'
             }`}
             aria-selected={isActive}
             role="tab"
@@ -68,14 +68,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <div className="relative flex items-center justify-center">
               {tab.icon}
               {tab.badge !== undefined && tab.badge > 0 && (
-                <span className="absolute -top-1.5 -right-2.5 bg-[#E85D2A] text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full min-w-[16px] text-center leading-tight shadow-xs">
+                <span className="absolute -top-1.5 -right-2.5 bg-[var(--color-arrow-orange)] text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full min-w-[16px] text-center leading-tight shadow-xs">
                   {tab.badge > 99 ? '99+' : tab.badge}
                 </span>
               )}
             </div>
             <span className="text-[11px] mt-1 tracking-tight uppercase font-bold flex items-center gap-1">
               {tab.label}
-              {isActive && <span className="w-1 h-1 rounded-full bg-[#E85D2A]" />}
+              {isActive && <span className="w-1 h-1 rounded-full bg-[var(--color-arrow-orange)]" />}
             </span>
           </button>
         );

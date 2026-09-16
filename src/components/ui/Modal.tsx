@@ -60,31 +60,31 @@ export const Modal: React.FC<ModalProps> = ({
         <div
           role="dialog"
           aria-modal="true"
-          className={`relative z-10 w-full ${maxWidthStyles[maxWidth]} max-h-[90vh] bg-[#F5F3EE] rounded-t-[32px] border-t border-x border-[#D9D6CF] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-250`}
+          className={`relative z-10 w-full ${maxWidthStyles[maxWidth]} max-h-[90vh] bg-[var(--color-offwhite)] rounded-t-[32px] border-t border-x border-[var(--color-border)] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-250`}
         >
           {/* Drag Pill */}
           <div className="pt-3.5 pb-1 flex justify-center cursor-grab active:cursor-grabbing">
-            <div className="w-12 h-1.5 rounded-full bg-[#D9D6CF]" />
+            <div className="w-12 h-1.5 rounded-full bg-[var(--color-border)]" />
           </div>
 
           {/* Header */}
           {(title || showCloseButton) && (
-            <div className="px-6 md:px-8 py-4 flex items-center justify-between border-b border-[#D9D6CF]">
+            <div className="px-6 md:px-8 py-4 flex items-center justify-between border-b border-[var(--color-border)]">
               <div>
                 {title && (
-                  <h3 className="text-lg font-bold tracking-tight text-[#111111]">
+                  <h3 className="text-lg font-bold tracking-tight text-[var(--color-ink)]">
                     {title}
                   </h3>
                 )}
                 {subtitle && (
-                  <p className="text-xs text-[#7A766E] mt-0.5">{subtitle}</p>
+                  <p className="text-xs text-[var(--color-stone-dark)] mt-0.5">{subtitle}</p>
                 )}
               </div>
               {showCloseButton && (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="p-2 rounded-full text-[#7A766E] hover:text-[#111111] hover:bg-[#EBE8E1] transition-colors cursor-pointer"
+                  className="p-2 rounded-full text-[var(--color-stone-dark)] hover:text-[var(--color-ink)] hover:bg-[var(--color-stone-light)] transition-colors cursor-pointer"
                   aria-label="Close dialog"
                 >
                   <X size={18} />
@@ -111,26 +111,26 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative z-10 w-full ${maxWidthStyles[maxWidth]} bg-[#F5F3EE] rounded-[32px] border border-[#D9D6CF] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col`}
+        className={`relative z-10 w-full ${maxWidthStyles[maxWidth]} bg-[var(--color-offwhite)] rounded-[32px] border border-[var(--color-border)] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col`}
       >
         {/* Header */}
         {(title || showCloseButton) && (
-          <div className="px-6 md:px-8 py-5 flex items-center justify-between border-b border-[#D9D6CF]">
+          <div className="px-6 md:px-8 py-5 flex items-center justify-between border-b border-[var(--color-border)]">
             <div>
               {title && (
-                <h3 className="text-lg font-bold tracking-tight text-[#111111]">
+                <h3 className="text-lg font-bold tracking-tight text-[var(--color-ink)]">
                   {title}
                 </h3>
               )}
               {subtitle && (
-                <p className="text-xs text-[#7A766E] mt-0.5">{subtitle}</p>
+                <p className="text-xs text-[var(--color-stone-dark)] mt-0.5">{subtitle}</p>
               )}
             </div>
             {showCloseButton && (
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 rounded-full text-[#7A766E] hover:text-[#111111] hover:bg-[#EBE8E1] transition-colors cursor-pointer"
+                className="p-2 rounded-full text-[var(--color-stone-dark)] hover:text-[var(--color-ink)] hover:bg-[var(--color-stone-light)] transition-colors cursor-pointer"
                 aria-label="Close dialog"
               >
                 <X size={18} />

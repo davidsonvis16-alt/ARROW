@@ -53,16 +53,16 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     >
       <form onSubmit={handleSave} className="space-y-6 pb-4">
         {/* Toggle Box */}
-        <div className="p-4 bg-[#FFFFFF] rounded-2xl border border-[#E2DDD5] flex items-center justify-between shadow-xs">
+        <div className="p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border-subtle)] flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-[#EAF1EF] border border-[#C5DCD6] text-[#17352F]">
+            <div className="p-2.5 rounded-xl bg-[var(--color-forest-subtle)] border border-[var(--color-border-subtle)] text-[var(--color-forest)]">
               <MessageCircle size={18} className="text-[#25D366]" />
             </div>
             <div>
-              <p className="text-xs font-bold text-[#111111]">
+              <p className="text-xs font-bold text-[var(--color-ink)]">
                 Allow WhatsApp Connections
               </p>
-              <p className="text-[11px] text-[#7A766E]">
+              <p className="text-[11px] text-[var(--color-stone-dark)]">
                 Enables a "Continue to WhatsApp" button for mutual matches
               </p>
             </div>
@@ -75,14 +75,14 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               onChange={(e) => setAllowWhatsApp(e.target.checked)}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-[#D9D6CF] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#17352F]" />
+            <div className="w-11 h-6 bg-[var(--color-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-forest)]" />
           </label>
         </div>
 
         {/* Number Input (if enabled) */}
         {allowWhatsApp && (
           <div className="space-y-1.5 animate-in fade-in duration-200">
-            <label className="text-xs font-bold text-[#111111]">
+            <label className="text-xs font-bold text-[var(--color-ink)]">
               WhatsApp Phone Number (with Country Code)
             </label>
             <input
@@ -91,38 +91,38 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               placeholder="+254 700 000 000 or +1 415 555 0199"
               value={whatsappNumber}
               onChange={(e) => setWhatsappNumber(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-[#FFFFFF] text-xs text-[#111111] font-mono placeholder:font-sans placeholder:text-[#7A766E]"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)] font-mono placeholder:font-sans placeholder:text-[var(--color-stone-dark)]"
             />
-            <p className="text-[10px] text-[#7A766E]">
+            <p className="text-[10px] text-[var(--color-stone-dark)]">
               Include international country code prefix (+).
             </p>
           </div>
         )}
 
         {/* Privacy & Safety Guarantee */}
-        <div className="p-4 bg-[#F4F8F7] rounded-2xl border border-[#C5DCD6] space-y-2 text-xs">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#17352F]">
-            <Lock size={14} className="text-[#17352F]" />
+        <div className="p-4 bg-[var(--color-forest-subtle)] rounded-2xl border border-[var(--color-border-subtle)] space-y-2 text-xs">
+          <div className="flex items-center gap-2 text-xs font-bold text-[var(--color-forest)]">
+            <Lock size={14} className="text-[var(--color-forest)]" />
             <span>Strict Privacy Architecture</span>
           </div>
-          <ul className="text-[11px] text-[#333333] space-y-1 leading-relaxed">
+          <ul className="text-[11px] text-[var(--color-ink-soft)] space-y-1 leading-relaxed">
             <li className="flex items-start gap-1.5">
-              <span className="text-[#E85D2A] font-bold">→</span>
+              <span className="text-[var(--color-arrow-orange)] font-bold">→</span>
               <span>Your number is <strong>never displayed</strong> on Discover, public profiles, or search.</span>
             </li>
             <li className="flex items-start gap-1.5">
-              <span className="text-[#E85D2A] font-bold">→</span>
+              <span className="text-[var(--color-arrow-orange)] font-bold">→</span>
               <span>Connections only activate when both users like each other.</span>
             </li>
             <li className="flex items-start gap-1.5">
-              <span className="text-[#E85D2A] font-bold">→</span>
+              <span className="text-[var(--color-arrow-orange)] font-bold">→</span>
               <span>You can revoke permission or disable WhatsApp anytime.</span>
             </li>
           </ul>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3 pt-3 border-t border-[#E2DDD5]">
+        <div className="flex items-center gap-3 pt-3 border-t border-[var(--color-border-subtle)]">
           <Button
             type="button"
             variant="ghost"

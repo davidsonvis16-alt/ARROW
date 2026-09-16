@@ -31,14 +31,14 @@ export const MatchesList: React.FC<MatchesListProps> = ({
   if (isGuest) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 min-h-[60vh]">
-        <div className="w-16 h-16 rounded-2xl bg-[#FAF8F4] border border-[#D9D6CF] flex items-center justify-center text-[#111111] shadow-xs">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-ink)] shadow-xs">
           <Users size={28} strokeWidth={2} />
         </div>
         <div className="space-y-1.5 max-w-xs">
-          <h3 className="text-2xl font-black tracking-tight text-[#111111]">
+          <h3 className="text-2xl font-black tracking-tight text-[var(--color-ink)]">
             Mutual Connections
           </h3>
-          <p className="text-xs text-[#7A766E] leading-relaxed font-normal">
+          <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed font-normal">
             When you and another member like each other, you match here and can message each other here.
           </p>
         </div>
@@ -58,14 +58,14 @@ export const MatchesList: React.FC<MatchesListProps> = ({
   if (matches.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 min-h-[60vh]">
-        <div className="w-16 h-16 rounded-2xl bg-[#FAF8F4] border border-[#D9D6CF] flex items-center justify-center text-[#111111] shadow-xs">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-ink)] shadow-xs">
           <Users size={28} strokeWidth={2} />
         </div>
         <div className="space-y-1 max-w-xs">
-          <h3 className="text-2xl font-black tracking-tight text-[#111111]">
+          <h3 className="text-2xl font-black tracking-tight text-[var(--color-ink)]">
             No matches yet.
           </h3>
-          <p className="text-xs text-[#7A766E] leading-relaxed font-normal">
+          <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed font-normal">
             Your next connection could be one profile away. Discover people and like who catches your eye.
           </p>
         </div>
@@ -86,7 +86,7 @@ export const MatchesList: React.FC<MatchesListProps> = ({
   return (
     <div className="space-y-4 pb-20">
       <div className="space-y-0.5">
-        <h2 className="text-xl font-black text-[#111111] tracking-tight font-sans">
+        <h2 className="text-xl font-black text-[var(--color-ink)] tracking-tight font-sans">
           Your Connections
         </h2>
         <p className="text-xs text-[var(--color-stone-dark)] font-medium">
@@ -171,7 +171,7 @@ export const MatchesList: React.FC<MatchesListProps> = ({
                 )}
 
                 {profile.allowWhatsApp && !item.lastMessage && (
-                  <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--color-forest)] mt-1.5 bg-[#EAF1EF] border border-[#C5DCD6] px-2 py-0.5 rounded-full">
+                  <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--color-forest)] mt-1.5 bg-[var(--color-forest-subtle)] border border-[var(--color-border-subtle)] px-2 py-0.5 rounded-full">
                     <MessageCircle size={10} className="text-[#25D366]" />
                     <span>Open to WhatsApp</span>
                   </div>

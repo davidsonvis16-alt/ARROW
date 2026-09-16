@@ -74,16 +74,16 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
       <div className="space-y-6 pb-4">
         {/* Age Range Slider */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-[#111111]">
+          <div className="flex items-center justify-between text-xs font-bold text-[var(--color-ink)]">
             <span>Age Range</span>
-            <span className="text-[#E85D2A] font-extrabold">
+            <span className="text-[var(--color-arrow-orange)] font-extrabold">
               {ageMin} – {ageMax >= 65 ? '65+' : ageMax}
             </span>
           </div>
 
           <div className="space-y-3 pt-1">
             <div>
-              <div className="flex justify-between text-[10px] text-[#7A766E] mb-1">
+              <div className="flex justify-between text-[10px] text-[var(--color-stone-dark)] mb-1">
                 <span>Minimum Age (18+)</span>
                 <span>{ageMin}</span>
               </div>
@@ -97,12 +97,12 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                   setAgeMin(val);
                   if (val > ageMax) setAgeMax(val);
                 }}
-                className="w-full accent-[#E85D2A] cursor-pointer"
+                className="w-full accent-[var(--color-arrow-orange)] cursor-pointer"
               />
             </div>
 
             <div>
-              <div className="flex justify-between text-[10px] text-[#7A766E] mb-1">
+              <div className="flex justify-between text-[10px] text-[var(--color-stone-dark)] mb-1">
                 <span>Maximum Age</span>
                 <span>{ageMax >= 65 ? '65+' : ageMax}</span>
               </div>
@@ -116,7 +116,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                   setAgeMax(val);
                   if (val < ageMin) setAgeMin(val);
                 }}
-                className="w-full accent-[#E85D2A] cursor-pointer"
+                className="w-full accent-[var(--color-arrow-orange)] cursor-pointer"
               />
             </div>
           </div>
@@ -124,7 +124,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
         {/* Gender Preference */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-[#111111]">Show Me</label>
+          <label className="text-xs font-bold text-[var(--color-ink)]">Show Me</label>
           <div className="flex flex-wrap gap-2">
             {(['everyone', 'woman', 'man', 'non-binary'] as Gender[]).map((g) => (
               <Badge
@@ -141,7 +141,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
         {/* Location Target */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[#111111]">
+          <label className="text-xs font-bold text-[var(--color-ink)]">
             Preferred City / Area (Optional)
           </label>
           <input
@@ -149,12 +149,12 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
             placeholder="Leave empty for all areas"
             value={locationPreference}
             onChange={(e) => setLocationPreference(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-[#FFFFFF] text-xs text-[#111111]"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
           />
         </div>
 
         {/* Buttons */}
-        <div className="flex items-center gap-3 pt-3 border-t border-[#E2DDD5]">
+        <div className="flex items-center gap-3 pt-3 border-t border-[var(--color-border-subtle)]">
           <Button
             variant="ghost"
             fullWidth

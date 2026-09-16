@@ -1,30 +1,160 @@
+/* ==========================================================================
+   ARROW design tokens
+   --------------------------------------------------------------------------
+   Every colour in the app resolves to a token defined here. Components use
+   var(--color-*) rather than a literal hex, which is what lets the same markup
+   render in either theme: the dark block below redefines the tokens, and
+   nothing else has to change.
+
+   Roles, not shades. `--color-surface` is "the thing content sits on", so in
+   dark mode it becomes a near-black and every card follows. Naming a token
+   after its job rather than its colour is what keeps the two themes from
+   drifting apart.
+   ========================================================================== */
+
 :root {
+  color-scheme: light;
+
+  /* Ground and surfaces */
+  --color-offwhite: #f5f3ee;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #faf8f4;
+  --color-surface-raised: #ffffff;
+
+  /* Text */
   --color-ink: #111111;
-  --color-offwhite: #F5F3EE;
-  --color-stone: #D9D6CF;
-  --color-stone-light: #EBE8E1;
-  --color-stone-dark: #7A766E;
-  --color-surface: #FFFFFF;
-  --color-surface-subtle: #FAF8F4;
-  --color-arrow-orange: #E85D2A;
-  --color-arrow-orange-hover: #D05325;
-  --color-arrow-orange-subtle: #FDF1EB;
-  --color-forest: #17352F;
-  --color-border: #D9D6CF;
-  --color-border-subtle: #E8E5DF;
-  --color-danger: #D9383A;
-  --color-danger-subtle: #FDF0F0;
-  
+  --color-ink-soft: #2e2c28;
+  --color-stone-dark: #7a766e;
+
+  /* Lines and fills */
+  --color-stone: #d9d6cf;
+  --color-stone-light: #ebe8e1;
+  --color-border: #d9d6cf;
+  --color-border-subtle: #e8e5df;
+
+  /* Brand */
+  --color-arrow-orange: #e85d2a;
+  --color-arrow-orange-hover: #d05325;
+  --color-arrow-orange-subtle: #fdf1eb;
+  --color-forest: #17352f;
+  --color-forest-subtle: #eaf1ef;
+
+  /* The navigation rail stays dark in both themes — it is a fixed anchor, not
+     a surface that follows the content. It therefore gets its own pair of
+     tokens instead of borrowing --color-ink, which inverts. */
+  --color-rail: #111111;
+  --color-rail-ink: #ffffff;
+
+  /* Status */
+  --color-danger: #d9383a;
+  --color-danger-subtle: #fdf0f0;
+  --color-success: #1f7a52;
+  --color-success-subtle: #e9f5ef;
+  --color-warning: #a96a12;
+  --color-warning-subtle: #fdf4e6;
+
+  /* Shape */
   --radius-card: 32px;
   --radius-card-sm: 20px;
   --radius-button: 16px;
   --radius-input: 14px;
   --radius-pill: 9999px;
 
-  --font-sans: 'Inter', 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-sans: 'Inter', 'Manrope', system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+
   --shadow-subtle: 0 4px 20px -2px rgba(17, 17, 17, 0.05);
-  --shadow-card: 0 20px 40px -10px rgba(17, 17, 17, 0.12), 0 8px 16px -4px rgba(17, 17, 17, 0.06);
+  --shadow-card: 0 20px 40px -10px rgba(17, 17, 17, 0.12),
+    0 8px 16px -4px rgba(17, 17, 17, 0.06);
   --shadow-modal: 0 24px 48px -8px rgba(17, 17, 17, 0.18);
+
+  /* One curve and one duration for everything, so the app moves as a piece. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 140ms;
+  --duration-base: 240ms;
+}
+
+/* Dark theme. Applied when the viewer's system asks for it, or when they
+   choose it explicitly via data-theme on the root element. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --color-offwhite: #131210;
+    --color-surface: #1c1a18;
+    --color-surface-subtle: #232120;
+    --color-surface-raised: #262322;
+
+    --color-ink: #f4f1ec;
+    --color-ink-soft: #d8d3cb;
+    --color-stone-dark: #9c968c;
+
+    --color-stone: #3a3633;
+    --color-stone-light: #2c2926;
+    --color-border: #3a3633;
+    --color-border-subtle: #302c29;
+
+    /* Lifted slightly: the same orange on a dark ground reads heavier. */
+    --color-arrow-orange: #f0693a;
+    --color-arrow-orange-hover: #ff7d4f;
+    --color-arrow-orange-subtle: #33211a;
+    --color-forest: #9fd3c3;
+    --color-forest-subtle: #1b2a26;
+
+    --color-rail: #0d0c0b;
+    --color-rail-ink: #f4f1ec;
+
+    --color-danger: #f2696b;
+    --color-danger-subtle: #331e1f;
+    --color-success: #6cc79a;
+    --color-success-subtle: #17291f;
+    --color-warning: #e0a458;
+    --color-warning-subtle: #2e2417;
+
+    --shadow-subtle: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+    --shadow-card: 0 20px 40px -10px rgba(0, 0, 0, 0.6),
+      0 8px 16px -4px rgba(0, 0, 0, 0.4);
+    --shadow-modal: 0 24px 48px -8px rgba(0, 0, 0, 0.7);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-offwhite: #131210;
+  --color-surface: #1c1a18;
+  --color-surface-subtle: #232120;
+  --color-surface-raised: #262322;
+
+  --color-ink: #f4f1ec;
+  --color-ink-soft: #d8d3cb;
+  --color-stone-dark: #9c968c;
+
+  --color-stone: #3a3633;
+  --color-stone-light: #2c2926;
+  --color-border: #3a3633;
+  --color-border-subtle: #302c29;
+
+  --color-arrow-orange: #f0693a;
+  --color-arrow-orange-hover: #ff7d4f;
+  --color-arrow-orange-subtle: #33211a;
+  --color-forest: #9fd3c3;
+  --color-forest-subtle: #1b2a26;
+
+  --color-danger: #f2696b;
+  --color-danger-subtle: #331e1f;
+  --color-success: #6cc79a;
+  --color-success-subtle: #17291f;
+  --color-warning: #e0a458;
+  --color-warning-subtle: #2e2417;
+
+  --color-rail: #0d0c0b;
+  --color-rail-ink: #f4f1ec;
+
+  --shadow-subtle: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 20px 40px -10px rgba(0, 0, 0, 0.6),
+    0 8px 16px -4px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 24px 48px -8px rgba(0, 0, 0, 0.7);
 }
 
 body {
@@ -40,7 +170,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -50,13 +179,14 @@ body {
 }
 ::-webkit-scrollbar-thumb {
   background: var(--color-stone);
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-stone-dark);
 }
 
-/* Wordmark styling */
+/* Brand ------------------------------------------------------------------ */
+
 .brand-wordmark {
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -77,20 +207,70 @@ body {
   justify-content: center;
   transform: rotate(45deg);
   border-radius: 4px;
-  transition: transform 0.25s ease;
+  transition: transform var(--duration-base) var(--ease-out);
 }
 
-.brand-arrow-badge-inner {
-  width: 8px;
-  height: 8px;
-  border-top: 2px solid #FFFFFF;
-  border-right: 2px solid #FFFFFF;
-  transform: rotate(-45deg);
-  margin-left: -2px;
-  margin-top: 2px;
+.brand-arrow-glyph {
+  color: var(--color-arrow-orange);
+  font-weight: 900;
 }
 
-.brand-wordmark:hover .brand-arrow-badge {
-  transform: rotate(45deg) scale(1.08);
+/* Keyboard hints --------------------------------------------------------- */
+
+.arrow-kbd {
+  display: inline-block;
+  min-width: 1.25em;
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: inherit;
+  font-size: 0.9em;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
 }
 
+/* Motion ----------------------------------------------------------------- */
+
+@keyframes arrow-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.arrow-rise {
+  animation: arrow-rise var(--duration-base) var(--ease-out) both;
+}
+
+/* Anyone who has asked their system to reduce motion gets none of it. This
+   matters more than usual here: a swipe deck is all movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

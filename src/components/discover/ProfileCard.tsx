@@ -167,7 +167,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
               <div
                 key={photo}
                 className={`h-1 flex-1 rounded-full transition-all duration-200 ${
-                  idx === photoIndex ? 'bg-white' : 'bg-white/35'
+                  idx === photoIndex ? 'bg-[var(--color-surface)]' : 'bg-white/35'
                 }`}
               />
             ))}

@@ -39,15 +39,15 @@ export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
       <div className="text-center py-2 space-y-5">
         {/* Directional Header */}
         <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FDF1EB] text-[#E85D2A] text-xs font-bold uppercase tracking-wider">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#E85D2A]" />
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange)] text-xs font-bold uppercase tracking-wider">
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-arrow-orange)]" />
             <span>Mutual Direction</span>
           </div>
-          <h2 className="text-2xl font-black text-[#111111] tracking-tight">
+          <h2 className="text-2xl font-black text-[var(--color-ink)] tracking-tight">
             You're connected.
           </h2>
-          <p className="text-xs text-[#7A766E]">
-            You and <span className="font-semibold text-[#111111]">{matchedProfile.name}</span> expressed mutual interest.
+          <p className="text-xs text-[var(--color-stone-dark)]">
+            You and <span className="font-semibold text-[var(--color-ink)]">{matchedProfile.name}</span> expressed mutual interest.
           </p>
         </div>
 
@@ -61,7 +61,7 @@ export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
           />
 
           <div className="flex flex-col items-center">
-            <span className="text-[#E85D2A] font-black text-2xl animate-pulse">
+            <span className="text-[var(--color-arrow-orange)] font-black text-2xl animate-pulse">
               →
             </span>
           </div>

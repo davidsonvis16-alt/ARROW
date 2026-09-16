@@ -30,24 +30,24 @@ export const Badge: React.FC<BadgeProps> = ({
   let variantStyles = '';
 
   if (selected) {
-    variantStyles = 'bg-[#111111] text-[#F5F3EE] border border-[#111111]';
+    variantStyles = 'bg-[var(--color-ink)] text-[var(--color-offwhite)] border border-[var(--color-ink)]';
   } else {
     switch (variant) {
       case 'accent':
-        variantStyles = 'bg-[#FDF1EB] text-[#E85D2A] border border-[#F9C3AF]';
+        variantStyles = 'bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange)] border border-[var(--color-danger)]';
         break;
       case 'forest':
-        variantStyles = 'bg-[#EAF1EF] text-[#17352F] border border-[#C5DCD6]';
+        variantStyles = 'bg-[var(--color-forest-subtle)] text-[var(--color-forest)] border border-[var(--color-border-subtle)]';
         break;
       case 'outline':
-        variantStyles = 'bg-transparent text-[#111111] border border-[#D9D6CF] hover:border-[#111111]';
+        variantStyles = 'bg-transparent text-[var(--color-ink)] border border-[var(--color-border)] hover:border-[var(--color-ink)]';
         break;
       case 'stone':
-        variantStyles = 'bg-[#EBE8E1] text-[#333333] border border-transparent';
+        variantStyles = 'bg-[var(--color-stone-light)] text-[var(--color-ink-soft)] border border-transparent';
         break;
       case 'neutral':
       default:
-        variantStyles = 'bg-[#FAF8F4] text-[#111111] border border-[#D9D6CF]';
+        variantStyles = 'bg-[var(--color-surface-subtle)] text-[var(--color-ink)] border border-[var(--color-border)]';
         break;
     }
   }

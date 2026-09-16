@@ -29,14 +29,14 @@ export const LikesList: React.FC<LikesListProps> = ({
   if (isGuest) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 min-h-[60vh]">
-        <div className="w-16 h-16 rounded-2xl bg-[#FAF8F4] border border-[#D9D6CF] flex items-center justify-center text-[#E85D2A] shadow-xs">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-arrow-orange)] shadow-xs">
           <Heart size={28} strokeWidth={2} />
         </div>
         <div className="space-y-1.5 max-w-xs">
-          <h3 className="text-2xl font-black tracking-tight text-[#111111]">
+          <h3 className="text-2xl font-black tracking-tight text-[var(--color-ink)]">
             Incoming Arrows
           </h3>
-          <p className="text-xs text-[#7A766E] leading-relaxed">
+          <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed">
             Log in or create your profile to receive Arrows and connect directly with people who like you.
           </p>
         </div>
@@ -56,14 +56,14 @@ export const LikesList: React.FC<LikesListProps> = ({
   if (likes.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 min-h-[60vh]">
-        <div className="w-16 h-16 rounded-2xl bg-[#FAF8F4] border border-[#D9D6CF] flex items-center justify-center text-[#E85D2A] shadow-xs">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-arrow-orange)] shadow-xs">
           <Heart size={28} strokeWidth={2} />
         </div>
         <div className="space-y-1 max-w-xs">
-          <h3 className="text-2xl font-black tracking-tight text-[#111111]">
+          <h3 className="text-2xl font-black tracking-tight text-[var(--color-ink)]">
             Nothing here yet.
           </h3>
-          <p className="text-xs text-[#7A766E] leading-relaxed">
+          <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed">
             When someone likes your profile, they'll appear right here for you to like back.
           </p>
         </div>
@@ -85,10 +85,10 @@ export const LikesList: React.FC<LikesListProps> = ({
     <div className="space-y-4 pb-20">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-black text-[#111111] tracking-tight font-sans">
+          <h2 className="text-xl font-black text-[var(--color-ink)] tracking-tight font-sans">
             Interested in You
           </h2>
-          <p className="text-xs text-[#7A766E] font-medium">
+          <p className="text-xs text-[var(--color-stone-dark)] font-medium">
             {likes.length} {likes.length === 1 ? 'person' : 'people'} sent you an arrow
           </p>
         </div>
@@ -103,12 +103,12 @@ export const LikesList: React.FC<LikesListProps> = ({
           return (
             <div
               key={profile.id}
-              className="bg-[#FFFFFF] rounded-[28px] border border-[#D9D6CF] overflow-hidden shadow-xs flex flex-col transition-all hover:shadow-md"
+              className="bg-[var(--color-surface)] rounded-[28px] border border-[var(--color-border)] overflow-hidden shadow-xs flex flex-col transition-all hover:shadow-md"
             >
               {/* Photo & Profile Header */}
               <div
                 onClick={() => onViewProfile(profile)}
-                className="relative aspect-[16/10] bg-[#EBE8E1] cursor-pointer group"
+                className="relative aspect-[16/10] bg-[var(--color-stone-light)] cursor-pointer group"
               >
                 {photo ? (
                   <img
@@ -163,7 +163,7 @@ export const LikesList: React.FC<LikesListProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center gap-1 text-xs text-white/80 font-medium">
-                    <MapPin size={12} className="text-[#E85D2A]" />
+                    <MapPin size={12} className="text-[var(--color-arrow-orange)]" />
                     <span>{profile.location}</span>
                   </div>
                 </div>
@@ -172,7 +172,7 @@ export const LikesList: React.FC<LikesListProps> = ({
               {/* Bio & Details */}
               <div className="p-5 space-y-3.5">
                 {profile.bio && (
-                  <p className="text-xs text-[#333333] line-clamp-2 leading-relaxed font-normal">
+                  <p className="text-xs text-[var(--color-ink-soft)] line-clamp-2 leading-relaxed font-normal">
                     {profile.bio}
                   </p>
                 )}
@@ -188,11 +188,11 @@ export const LikesList: React.FC<LikesListProps> = ({
                 )}
 
                 {/* Actions: PASS and LIKE BACK */}
-                <div className="pt-3 flex items-center gap-3 border-t border-[#EBE8E1]">
+                <div className="pt-3 flex items-center gap-3 border-t border-[var(--color-stone-light)]">
                   <button
                     type="button"
                     onClick={() => onPass(profile)}
-                    className="flex-1 py-3 px-4 rounded-2xl border border-[#D9D6CF] bg-transparent text-[#111111] hover:bg-[#EBE8E1] font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer uppercase tracking-wider"
+                    className="flex-1 py-3 px-4 rounded-2xl border border-[var(--color-border)] bg-transparent text-[var(--color-ink)] hover:bg-[var(--color-stone-light)] font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer uppercase tracking-wider"
                   >
                     <ArrowLeft size={14} />
                     <span>PASS</span>
@@ -201,7 +201,7 @@ export const LikesList: React.FC<LikesListProps> = ({
                   <button
                     type="button"
                     onClick={() => onLikeBack(profile)}
-                    className="flex-1 py-3 px-4 rounded-2xl bg-[#E85D2A] text-white hover:bg-[#D05325] font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer uppercase tracking-wider"
+                    className="flex-1 py-3 px-4 rounded-2xl bg-[var(--color-arrow-orange)] text-white hover:bg-[var(--color-arrow-orange-hover)] font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer uppercase tracking-wider"
                   >
                     <span>LIKE BACK</span>
                     <ArrowRight size={14} />

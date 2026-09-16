@@ -63,7 +63,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
                   type="button"
                   onClick={() => setActivePhotoIdx(idx)}
                   className={`relative shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all ${
-                    idx === activePhotoIdx ? 'border-[#E85D2A] scale-105' : 'border-transparent opacity-70'
+                    idx === activePhotoIdx ? 'border-[var(--color-arrow-orange)] scale-105' : 'border-transparent opacity-70'
                   }`}
                 >
                   <img
@@ -79,23 +79,23 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
         </div>
 
         {/* Identity & Basic Info */}
-        <div className="border-b border-[#E2DDD5] pb-4">
+        <div className="border-b border-[var(--color-border-subtle)] pb-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-extrabold text-[#111111] tracking-tight">
-              {profile.name}, <span className="font-normal text-[#7A766E]">{profile.age}</span>
+            <h2 className="text-2xl font-extrabold text-[var(--color-ink)] tracking-tight">
+              {profile.name}, <span className="font-normal text-[var(--color-stone-dark)]">{profile.age}</span>
             </h2>
             <button
               type="button"
               onClick={onReport}
-              className="text-xs font-semibold text-[#D9383A] hover:underline flex items-center gap-1"
+              className="text-xs font-semibold text-[var(--color-danger)] hover:underline flex items-center gap-1"
             >
               <ShieldAlert size={14} />
               <span>Report or Block</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-[#7A766E] font-medium mt-1">
-            <MapPin size={14} className="text-[#E85D2A]" />
+          <div className="flex items-center gap-1.5 text-xs text-[var(--color-stone-dark)] font-medium mt-1">
+            <MapPin size={14} className="text-[var(--color-arrow-orange)]" />
             <span>{profile.location}</span>
             <span className="mx-1">·</span>
             <span className="capitalize">{profile.gender}</span>
@@ -105,10 +105,10 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
         {/* Bio */}
         {profile.bio && (
           <div className="space-y-1.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
               About
             </h4>
-            <p className="text-sm text-[#222222] leading-relaxed whitespace-pre-line">
+            <p className="text-sm text-[var(--color-ink-soft)] leading-relaxed whitespace-pre-line">
               {profile.bio}
             </p>
           </div>
@@ -117,7 +117,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
         {/* Looking For */}
         {profile.lookingFor && (
           <div className="space-y-1.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
               Looking For
             </h4>
             <Badge variant="accent" size="md">
@@ -129,7 +129,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
         {/* Interests */}
         {profile.interests && profile.interests.length > 0 && (
           <div className="space-y-1.5">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
               Interests & Passions
             </h4>
             <div className="flex flex-wrap gap-1.5">
@@ -145,7 +145,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
         {/* Prompts */}
         {profile.prompts && profile.prompts.length > 0 && (
           <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
               Prompts & Thoughts
             </h4>
             <div className="space-y-2.5">
@@ -154,12 +154,12 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
                   p.answer && (
                     <div
                       key={idx}
-                      className="p-4 bg-[#FAF8F4] rounded-2xl border border-[#E2DDD5] space-y-1.5"
+                      className="p-4 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] space-y-1.5"
                     >
-                      <div className="text-xs font-bold text-[#17352F]">
+                      <div className="text-xs font-bold text-[var(--color-forest)]">
                         <span>{p.question}</span>
                       </div>
-                      <p className="text-sm text-[#111111] font-medium leading-relaxed">
+                      <p className="text-sm text-[var(--color-ink)] font-medium leading-relaxed">
                         {p.answer}
                       </p>
                     </div>
@@ -170,14 +170,14 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
         )}
 
         {/* Bottom Actions Sticky in Modal */}
-        <div className="pt-4 flex items-center gap-3 border-t border-[#E2DDD5]">
+        <div className="pt-4 flex items-center gap-3 border-t border-[var(--color-border-subtle)]">
           <button
             type="button"
             onClick={() => {
               onPass();
               onClose();
             }}
-            className="flex-1 py-3 px-4 rounded-xl border-2 border-[#111111] text-[#111111] font-bold text-sm flex items-center justify-center gap-1.5 hover:bg-[#111111] hover:text-[#F5F3EE] transition-colors"
+            className="flex-1 py-3 px-4 rounded-xl border-2 border-[var(--color-ink)] text-[var(--color-ink)] font-bold text-sm flex items-center justify-center gap-1.5 hover:bg-[var(--color-ink)] hover:text-[var(--color-offwhite)] transition-colors"
           >
             <ArrowLeft size={16} strokeWidth={2.5} />
             <span>PASS</span>
@@ -188,7 +188,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
               onLike();
               onClose();
             }}
-            className="flex-1 py-3 px-4 rounded-xl bg-[#E85D2A] text-white font-bold text-sm flex items-center justify-center gap-1.5 hover:bg-[#D44F1F] shadow-sm transition-colors"
+            className="flex-1 py-3 px-4 rounded-xl bg-[var(--color-arrow-orange)] text-white font-bold text-sm flex items-center justify-center gap-1.5 hover:bg-[var(--color-arrow-orange-hover)] shadow-sm transition-colors"
           >
             <span>LIKE</span>
             <ArrowRight size={16} strokeWidth={2.5} />

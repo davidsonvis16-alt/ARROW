@@ -117,16 +117,16 @@ export const FilterModal: React.FC<FilterModalProps> = ({
       <div className="space-y-6 pb-2">
         {/* Age Range Slider */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-[#111111]">
+          <div className="flex items-center justify-between text-xs font-bold text-[var(--color-ink)]">
             <span>Age Range</span>
-            <span className="text-[#E85D2A] font-extrabold">
+            <span className="text-[var(--color-arrow-orange)] font-extrabold">
               {ageMin} – {ageMax >= 65 ? '65+' : ageMax}
             </span>
           </div>
 
           <div className="space-y-3 pt-1">
             <div>
-              <div className="flex justify-between text-[10px] text-[#7A766E] mb-1">
+              <div className="flex justify-between text-[10px] text-[var(--color-stone-dark)] mb-1">
                 <span>Minimum Age (18+)</span>
                 <span>{ageMin}</span>
               </div>
@@ -140,12 +140,12 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                   setAgeMin(val);
                   if (val > ageMax) setAgeMax(val);
                 }}
-                className="w-full accent-[#E85D2A] cursor-pointer"
+                className="w-full accent-[var(--color-arrow-orange)] cursor-pointer"
               />
             </div>
 
             <div>
-              <div className="flex justify-between text-[10px] text-[#7A766E] mb-1">
+              <div className="flex justify-between text-[10px] text-[var(--color-stone-dark)] mb-1">
                 <span>Maximum Age</span>
                 <span>{ageMax >= 65 ? '65+' : ageMax}</span>
               </div>
@@ -159,7 +159,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
                   setAgeMax(val);
                   if (val < ageMin) setAgeMin(val);
                 }}
-                className="w-full accent-[#E85D2A] cursor-pointer"
+                className="w-full accent-[var(--color-arrow-orange)] cursor-pointer"
               />
             </div>
           </div>
@@ -167,7 +167,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
 
         {/* Gender Preference */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-[#111111]">Show Me</label>
+          <label className="text-xs font-bold text-[var(--color-ink)]">Show Me</label>
           <div className="flex flex-wrap gap-2">
             {(['everyone', 'woman', 'man', 'non-binary'] as Gender[]).map((g) => (
               <Badge
@@ -184,7 +184,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
 
         {/* Location Filter */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[#111111]">
+          <label className="text-xs font-bold text-[var(--color-ink)]">
             City / General Location
           </label>
           <input
@@ -192,13 +192,13 @@ export const FilterModal: React.FC<FilterModalProps> = ({
             placeholder="e.g. Nairobi, London, Berlin"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] text-xs text-[#111111] focus:bg-white placeholder:text-[#7A766E]"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-subtle)] text-xs text-[var(--color-ink)] focus:bg-[var(--color-surface)] placeholder:text-[var(--color-stone-dark)]"
           />
         </div>
 
         {/* Looking For Filter */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-[#111111]">Looking For</label>
+          <label className="text-xs font-bold text-[var(--color-ink)]">Looking For</label>
           <div className="flex flex-wrap gap-1.5">
             {LOOKING_FOR_OPTIONS.map((opt) => (
               <Badge
@@ -215,7 +215,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
 
         {/* Interests Filter */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-[#111111]">Interests</label>
+          <label className="text-xs font-bold text-[var(--color-ink)]">Interests</label>
           <div className="flex flex-wrap gap-1.5">
             {ALL_INTERESTS.map((interest) => (
               <Badge
@@ -231,11 +231,11 @@ export const FilterModal: React.FC<FilterModalProps> = ({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3 pt-3 border-t border-[#E2DDD5]">
+        <div className="flex items-center gap-3 pt-3 border-t border-[var(--color-border-subtle)]">
           <button
             type="button"
             onClick={handleReset}
-            className="px-3 py-2.5 rounded-xl border border-[#D9D6CF] text-xs font-bold text-[#7A766E] hover:text-[#111111] hover:bg-[#EBE8E1] transition-colors flex items-center gap-1.5"
+            className="px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-xs font-bold text-[var(--color-stone-dark)] hover:text-[var(--color-ink)] hover:bg-[var(--color-stone-light)] transition-colors flex items-center gap-1.5"
           >
             <RotateCcw size={14} />
             <span>Reset</span>

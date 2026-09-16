@@ -85,8 +85,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     >
       <form onSubmit={handleSubmit} className="space-y-5 pb-3">
         {/* Notice */}
-        <div className="p-3.5 bg-[#FAF8F4] rounded-2xl border border-[#E2DDD5] flex items-start gap-2.5 text-xs text-[#333333]">
-          <ShieldAlert size={16} className="text-[#E85D2A] shrink-0 mt-0.5" />
+        <div className="p-3.5 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] flex items-start gap-2.5 text-xs text-[var(--color-ink-soft)]">
+          <ShieldAlert size={16} className="text-[var(--color-arrow-orange)] shrink-0 mt-0.5" />
           <p className="leading-relaxed">
             Reports are kept strictly anonymous. Submitting this report will also automatically block {reportedUser.name} from interacting with you.
           </p>
@@ -94,7 +94,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
         {/* Reason Selection */}
         <div className="space-y-2">
-          <label className="text-xs font-bold text-[#111111]">
+          <label className="text-xs font-bold text-[var(--color-ink)]">
             Reason for Report
           </label>
           <div className="space-y-2">
@@ -103,8 +103,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 key={r.value}
                 className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-colors ${
                   selectedReason === r.value
-                    ? 'bg-white border-[#111111] shadow-xs'
-                    : 'bg-[#FAF8F4] border-[#E2DDD5] hover:bg-white'
+                    ? 'bg-[var(--color-surface)] border-[var(--color-ink)] shadow-xs'
+                    : 'bg-[var(--color-surface-subtle)] border-[var(--color-border-subtle)] hover:bg-[var(--color-surface)]'
                 }`}
               >
                 <input
@@ -113,11 +113,11 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                   value={r.value}
                   checked={selectedReason === r.value}
                   onChange={() => setSelectedReason(r.value)}
-                  className="mt-0.5 accent-[#E85D2A]"
+                  className="mt-0.5 accent-[var(--color-arrow-orange)]"
                 />
                 <div>
-                  <p className="text-xs font-bold text-[#111111]">{r.label}</p>
-                  <p className="text-[11px] text-[#7A766E] leading-tight">
+                  <p className="text-xs font-bold text-[var(--color-ink)]">{r.label}</p>
+                  <p className="text-[11px] text-[var(--color-stone-dark)] leading-tight">
                     {r.description}
                   </p>
                 </div>
@@ -128,7 +128,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
 
         {/* Additional Details */}
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[#111111]">
+          <label className="text-xs font-bold text-[var(--color-ink)]">
             Additional Details (Optional)
           </label>
           <textarea
@@ -137,12 +137,12 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             placeholder="Help our moderation team understand what happened..."
             value={details}
             onChange={(e) => setDetails(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111] resize-none"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)] resize-none"
           />
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3 pt-2 border-t border-[#E2DDD5]">
+        <div className="flex items-center gap-3 pt-2 border-t border-[var(--color-border-subtle)]">
           <Button
             type="button"
             variant="ghost"

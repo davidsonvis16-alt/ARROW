@@ -124,8 +124,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       <div className="space-y-5">
         {currentUser ? (
           <div className="space-y-5">
-            <div className="p-4 bg-white rounded-2xl border border-[#D9D6CF] flex items-center gap-4 shadow-xs">
-              <div className="relative w-14 h-14 rounded-2xl overflow-hidden bg-stone-700 shrink-0 border border-[#D9D6CF]">
+            <div className="p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] flex items-center gap-4 shadow-xs">
+              <div className="relative w-14 h-14 rounded-2xl overflow-hidden bg-stone-700 shrink-0 border border-[var(--color-border)]">
                 <img
                   src={
                     currentUser.photos[0]
@@ -137,14 +137,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <h4 className="text-base font-bold text-[#111111] truncate">
+                  <h4 className="text-base font-bold text-[var(--color-ink)] truncate">
                     {currentUser.name}, {currentUser.age}
                   </h4>
-                  <ShieldCheck size={16} className="text-[#17352F] shrink-0" />
+                  <ShieldCheck size={16} className="text-[var(--color-forest)] shrink-0" />
                 </div>
-                <p className="text-xs text-[#7A766E] truncate">{currentUser.location}</p>
-                <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[#17352F] mt-1 bg-[#EAF1EF] border border-[#C5DCD6] px-2 py-0.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#17352F]" />
+                <p className="text-xs text-[var(--color-stone-dark)] truncate">{currentUser.location}</p>
+                <div className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--color-forest)] mt-1 bg-[var(--color-forest-subtle)] border border-[var(--color-border-subtle)] px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-forest)]" />
                   <span>Active Session</span>
                 </div>
               </div>
@@ -152,7 +152,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             {savedProfiles.length > 1 && (
               <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
                   Switch Active Profile
                 </h4>
                 <div className="space-y-2 max-h-36 overflow-y-auto no-scrollbar">
@@ -167,10 +167,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                           onClose();
                           showToast(`Switched to ${p.name}`, 'info');
                         }}
-                        className="w-full p-2.5 bg-white hover:bg-[#FAF8F4] border border-[#D9D6CF] rounded-2xl flex items-center justify-between transition-colors cursor-pointer text-left"
+                        className="w-full p-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-2xl flex items-center justify-between transition-colors cursor-pointer text-left"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl overflow-hidden bg-stone-200 shrink-0">
+                          <div className="w-9 h-9 rounded-xl overflow-hidden bg-[var(--color-stone-light)] shrink-0">
                             <img
                               src={
                                 p.photos[0]
@@ -181,13 +181,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             />
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-[#111111]">
+                            <p className="text-xs font-bold text-[var(--color-ink)]">
                               {p.name}, {p.age}
                             </p>
-                            <p className="text-[10px] text-[#7A766E]">{p.location}</p>
+                            <p className="text-[10px] text-[var(--color-stone-dark)]">{p.location}</p>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-[#E85D2A] flex items-center gap-1">
+                        <span className="text-xs font-bold text-[var(--color-arrow-orange)] flex items-center gap-1">
                           <span>Select</span>
                           <ChevronRight size={13} />
                         </span>
@@ -197,7 +197,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             )}
 
-            <div className="space-y-2 pt-2 border-t border-[#D9D6CF]">
+            <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
               <Button
                 variant="outline"
                 fullWidth
@@ -241,31 +241,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#111111]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-ink)]">
                   Create Account
                 </h4>
                 {isSupabaseConfigured && (
                   <form onSubmit={handleEmailAuth} className="space-y-2">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-[#111111]">Email</label>
+                      <label className="text-xs font-bold text-[var(--color-ink)]">Email</label>
                       <input
                         type="email"
                         required
                         placeholder="you@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-[#111111]">Password</label>
+                      <label className="text-xs font-bold text-[var(--color-ink)]">Password</label>
                       <input
                         type="password"
                         required
                         placeholder="Min 6 characters"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E2DDD5] bg-white text-xs text-[#111111]"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
                       />
                     </div>
                     <Button
@@ -290,9 +290,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="flex-1 h-px bg-[#E2DDD5]" />
-                <span className="text-[10px] text-[#7A766E] font-semibold uppercase tracking-wider">or</span>
-                <div className="flex-1 h-px bg-[#E2DDD5]" />
+                <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
+                <span className="text-[10px] text-[var(--color-stone-dark)] font-semibold uppercase tracking-wider">or</span>
+                <div className="flex-1 h-px bg-[var(--color-border-subtle)]" />
               </div>
 
               <Button
@@ -306,8 +306,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
 
             {savedProfiles.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-[#D9D6CF]">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#7A766E]">
+              <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
                   Saved Profiles on Device
                 </h4>
                 <div className="space-y-1.5 max-h-36 overflow-y-auto no-scrollbar">
@@ -320,10 +320,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         onClose();
                         showToast(`Logged in as ${p.name}`, 'success');
                       }}
-                      className="w-full p-2.5 bg-white hover:bg-[#FAF8F4] border border-[#D9D6CF] rounded-2xl flex items-center justify-between transition-colors cursor-pointer text-left group"
+                      className="w-full p-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-subtle)] border border-[var(--color-border)] rounded-2xl flex items-center justify-between transition-colors cursor-pointer text-left group"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl overflow-hidden bg-stone-200 shrink-0 border border-[#D9D6CF]">
+                        <div className="w-8 h-8 rounded-xl overflow-hidden bg-[var(--color-stone-light)] shrink-0 border border-[var(--color-border)]">
                           <img
                             src={
                               p.photos[0]
@@ -333,11 +333,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             referrerPolicy="no-referrer"
                           />
                         </div>
-                        <span className="text-xs font-bold text-[#111111] group-hover:text-[#E85D2A] transition-colors">
+                        <span className="text-xs font-bold text-[var(--color-ink)] group-hover:text-[var(--color-arrow-orange)] transition-colors">
                           {p.name}, {p.age}
                         </span>
                       </div>
-                      <span className="text-xs font-bold text-[#111111] group-hover:text-[#E85D2A] flex items-center gap-1">
+                      <span className="text-xs font-bold text-[var(--color-ink)] group-hover:text-[var(--color-arrow-orange)] flex items-center gap-1">
                         <span>Log In</span>
                         <ArrowRight size={13} />
                       </span>

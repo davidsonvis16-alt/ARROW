@@ -3,6 +3,7 @@ import { UserProfile, BlockRecord } from '../../types';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Avatar } from '../ui/Avatar';
+import { SafetySection } from './SafetySection';
 import { storageService } from '../../services/storageService';
 import { useToast } from '../ui/Toast';
 import { LegalDocType } from '../safety/LegalModal';
@@ -33,6 +34,8 @@ interface SettingsModalProps {
   onDeleteAccount: () => Promise<void>;
   onSwitchProfile: (profileId: string) => void;
   onNewProfile: () => void;
+  onTogglePause: (paused: boolean) => Promise<void>;
+  onToggleOnlineStatus?: (show: boolean) => Promise<void>;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -47,6 +50,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onDeleteAccount,
   onSwitchProfile,
   onNewProfile,
+  onTogglePause,
+  onToggleOnlineStatus,
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBlockedUsers, setShowBlockedUsers] = useState(false);
@@ -55,13 +60,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const { showToast } = useToast();
 
   const allProfiles = storageService.getAllProfiles();
-  const blockedIds = storageService.getBlockedUserIds(currentUser.id);
-  const blockedProfiles = allProfiles.filter((p) => blockedIds.includes(p.id));
-
-  const handleUnblock = (blockedId: string, name: string) => {
-    storageService.unblockUser(currentUser.id, blockedId);
-    showToast(`Unblocked ${name}`, 'info');
-  };
 
   const handlePermanentDelete = async () => {
     setIsDeleting(true);
@@ -85,12 +83,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     >
       <div className="space-y-6 pb-4">
         {/* Account Info Card */}
-        <div className="p-4 bg-[#FFFFFF] rounded-2xl border border-[#E2DDD5] flex items-center justify-between shadow-xs">
+        <div className="p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border-subtle)] flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
             <Avatar name={currentUser.name} src={currentUser.photos[0]} size="md" />
             <div>
-              <h3 className="text-sm font-bold text-[#111111]">{currentUser.name}</h3>
-              <p className="text-[11px] text-[#7A766E]">
+              <h3 className="text-sm font-bold text-[var(--color-ink)]">{currentUser.name}</h3>
+              <p className="text-[11px] text-[var(--color-stone-dark)]">
                 {currentUser.age} years old · 18+ Verified Member
               </p>
             </div>
@@ -102,34 +100,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClose();
               onOpenEditProfile();
             }}
-            className="text-xs font-bold text-[#E85D2A] hover:underline"
+            className="text-xs font-bold text-[var(--color-arrow-orange)] hover:underline"
           >
             Edit
           </button>
         </div>
 
         {/* Core Settings Menu */}
-        <div className="space-y-1.5 bg-[#FFFFFF] rounded-2xl border border-[#E2DDD5] p-2 divide-y divide-[#EFECE6]">
+        <div className="space-y-1.5 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border-subtle)] p-2 divide-y divide-[var(--color-border-subtle)]">
           <button
             type="button"
             onClick={() => {
               onClose();
               onOpenPreferences();
             }}
-            className="w-full p-3 flex items-center justify-between text-left hover:bg-[#FAF8F4] rounded-xl transition-colors"
+            className="w-full p-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-subtle)] rounded-xl transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Sliders size={16} className="text-[#111111]" />
+              <Sliders size={16} className="text-[var(--color-ink)]" />
               <div>
-                <p className="text-xs font-bold text-[#111111]">
+                <p className="text-xs font-bold text-[var(--color-ink)]">
                   Dating Discovery Scope
                 </p>
-                <p className="text-[10px] text-[#7A766E]">
+                <p className="text-[10px] text-[var(--color-stone-dark)]">
                   Age filter, genders, and locations
                 </p>
               </div>
             </div>
-            <span className="text-xs font-bold text-[#7A766E]">→</span>
+            <span className="text-xs font-bold text-[var(--color-stone-dark)]">→</span>
           </button>
 
           <button
@@ -138,88 +136,72 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClose();
               onOpenWhatsApp();
             }}
-            className="w-full p-3 flex items-center justify-between text-left hover:bg-[#FAF8F4] rounded-xl transition-colors"
+            className="w-full p-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-subtle)] rounded-xl transition-colors"
           >
             <div className="flex items-center gap-3">
               <MessageCircle size={16} className="text-[#25D366]" />
               <div>
-                <p className="text-xs font-bold text-[#111111]">
+                <p className="text-xs font-bold text-[var(--color-ink)]">
                   WhatsApp Connection
                 </p>
-                <p className="text-[10px] text-[#7A766E]">
+                <p className="text-[10px] text-[var(--color-stone-dark)]">
                   {currentUser.allowWhatsApp ? 'Enabled for mutual matches' : 'Disabled'}
                 </p>
               </div>
             </div>
-            <span className="text-xs font-bold text-[#7A766E]">→</span>
+            <span className="text-xs font-bold text-[var(--color-stone-dark)]">→</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowBlockedUsers(!showBlockedUsers)}
-            className="w-full p-3 flex items-center justify-between text-left hover:bg-[#FAF8F4] rounded-xl transition-colors"
+            className="w-full p-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-subtle)] rounded-xl transition-colors"
+            aria-expanded={showBlockedUsers}
           >
             <div className="flex items-center gap-3">
-              <UserX size={16} className="text-[#111111]" />
+              <Shield size={16} className="text-[var(--color-ink)]" />
               <div>
-                <p className="text-xs font-bold text-[#111111]">Blocked Users</p>
-                <p className="text-[10px] text-[#7A766E]">
-                  {blockedIds.length} {blockedIds.length === 1 ? 'user' : 'users'} blocked
+                <p className="text-xs font-bold text-[var(--color-ink)]">Safety &amp; privacy</p>
+                <p className="text-[10px] text-[var(--color-stone-dark)]">
+                  Pause your profile, manage blocks, choose a theme
                 </p>
               </div>
             </div>
-            <span className="text-xs font-bold text-[#7A766E]">
-              {showBlockedUsers ? '↓' : '→'}
+            <span className="text-xs font-bold text-[var(--color-stone-dark)]">
+              {showBlockedUsers ? '\u2193' : '\u2192'}
             </span>
           </button>
         </div>
 
-        {/* Blocked Users Expanded List */}
         {showBlockedUsers && (
-          <div className="p-3.5 bg-[#FAF8F4] rounded-2xl border border-[#E2DDD5] space-y-2 animate-in fade-in duration-150">
-            <h4 className="text-xs font-bold text-[#111111]">Blocked Accounts</h4>
-            {blockedProfiles.length === 0 ? (
-              <p className="text-xs text-[#7A766E]">No blocked users.</p>
-            ) : (
-              <div className="space-y-2">
-                {blockedProfiles.map((bp) => (
-                  <div
-                    key={bp.id}
-                    className="flex items-center justify-between p-2 bg-white rounded-xl border border-[#E2DDD5]"
-                  >
-                    <span className="text-xs font-medium text-[#111111]">{bp.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleUnblock(bp.id, bp.name)}
-                      className="text-[11px] font-bold text-[#E85D2A] hover:underline"
-                    >
-                      Unblock
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="arrow-rise">
+            <SafetySection
+              isPaused={Boolean(currentUser.isPaused)}
+              showOnlineStatus={currentUser.showOnlineStatus !== false}
+              onTogglePause={onTogglePause}
+              onToggleOnlineStatus={onToggleOnlineStatus}
+            />
           </div>
         )}
 
         {/* Testing & Multi-Profile Switcher (For local evaluation) */}
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[#7A766E]">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
               Profiles & Testing Mode
             </span>
             <button
               type="button"
               onClick={() => setShowProfileSwitcher(!showProfileSwitcher)}
-              className="text-[11px] font-bold text-[#111111] hover:underline"
+              className="text-[11px] font-bold text-[var(--color-ink)] hover:underline"
             >
               {showProfileSwitcher ? 'Hide' : 'Switch / Add Profile'}
             </button>
           </div>
 
           {showProfileSwitcher && (
-            <div className="p-3.5 bg-[#FAF8F4] rounded-2xl border border-[#E2DDD5] space-y-3 animate-in fade-in duration-150">
-              <p className="text-[11px] text-[#7A766E] leading-tight">
+            <div className="p-3.5 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] space-y-3 animate-in fade-in duration-150">
+              <p className="text-[11px] text-[var(--color-stone-dark)] leading-tight">
                 Switch accounts or add a new profile to test discovery, mutual likes, and WhatsApp matching:
               </p>
               <div className="space-y-1.5 max-h-36 overflow-y-auto">
@@ -233,13 +215,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }}
                     className={`w-full p-2.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${
                       p.id === currentUser.id
-                        ? 'bg-[#111111] text-white border-[#111111] font-bold'
-                        : 'bg-white text-[#111111] border-[#E2DDD5] hover:bg-[#FAF8F4]'
+                        ? 'bg-[var(--color-ink)] text-white border-[var(--color-ink)] font-bold'
+                        : 'bg-[var(--color-surface)] text-[var(--color-ink)] border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)]'
                     }`}
                   >
                     <span>{p.name} ({p.age}, {p.location})</span>
                     {p.id === currentUser.id && (
-                      <span className="text-[10px] text-[#E85D2A] font-bold">Active</span>
+                      <span className="text-[10px] text-[var(--color-arrow-orange)] font-bold">Active</span>
                     )}
                   </button>
                 ))}
@@ -262,20 +244,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Legal & Safety Section */}
-        <div className="space-y-1.5 bg-[#FFFFFF] rounded-2xl border border-[#E2DDD5] p-2 divide-y divide-[#EFECE6]">
+        <div className="space-y-1.5 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border-subtle)] p-2 divide-y divide-[var(--color-border-subtle)]">
           <button
             type="button"
             onClick={() => {
               onClose();
               onOpenLegal('safety');
             }}
-            className="w-full p-3 flex items-center justify-between text-left hover:bg-[#FAF8F4] rounded-xl transition-colors"
+            className="w-full p-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-subtle)] rounded-xl transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Shield size={16} className="text-[#E85D2A]" />
-              <span className="text-xs font-bold text-[#111111]">Safety Guidelines</span>
+              <Shield size={16} className="text-[var(--color-arrow-orange)]" />
+              <span className="text-xs font-bold text-[var(--color-ink)]">Safety Guidelines</span>
             </div>
-            <span className="text-xs font-bold text-[#7A766E]">→</span>
+            <span className="text-xs font-bold text-[var(--color-stone-dark)]">→</span>
           </button>
 
           <button
@@ -284,13 +266,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClose();
               onOpenLegal('privacy');
             }}
-            className="w-full p-3 flex items-center justify-between text-left hover:bg-[#FAF8F4] rounded-xl transition-colors"
+            className="w-full p-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-subtle)] rounded-xl transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Lock size={16} className="text-[#17352F]" />
-              <span className="text-xs font-bold text-[#111111]">Privacy Policy</span>
+              <Lock size={16} className="text-[var(--color-forest)]" />
+              <span className="text-xs font-bold text-[var(--color-ink)]">Privacy Policy</span>
             </div>
-            <span className="text-xs font-bold text-[#7A766E]">→</span>
+            <span className="text-xs font-bold text-[var(--color-stone-dark)]">→</span>
           </button>
 
           <button
@@ -299,13 +281,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClose();
               onOpenLegal('terms');
             }}
-            className="w-full p-3 flex items-center justify-between text-left hover:bg-[#FAF8F4] rounded-xl transition-colors"
+            className="w-full p-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-subtle)] rounded-xl transition-colors"
           >
             <div className="flex items-center gap-3">
-              <FileText size={16} className="text-[#111111]" />
-              <span className="text-xs font-bold text-[#111111]">Terms of Service</span>
+              <FileText size={16} className="text-[var(--color-ink)]" />
+              <span className="text-xs font-bold text-[var(--color-ink)]">Terms of Service</span>
             </div>
-            <span className="text-xs font-bold text-[#7A766E]">→</span>
+            <span className="text-xs font-bold text-[var(--color-stone-dark)]">→</span>
           </button>
         </div>
 
@@ -327,18 +309,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
-              className="w-full py-2.5 text-xs font-bold text-[#D9383A] hover:bg-[#FDF0F0] rounded-xl transition-colors flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 text-xs font-bold text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)] rounded-xl transition-colors flex items-center justify-center gap-1.5"
             >
               <Trash2 size={14} />
               <span>Delete Account Permanently</span>
             </button>
           ) : (
-            <div className="p-4 bg-[#FDF0F0] rounded-2xl border border-[#F9C3AF] space-y-3 animate-in fade-in duration-200">
-              <div className="flex items-start gap-2 text-xs font-bold text-[#D9383A]">
+            <div className="p-4 bg-[var(--color-danger-subtle)] rounded-2xl border border-[var(--color-danger)] space-y-3 animate-in fade-in duration-200">
+              <div className="flex items-start gap-2 text-xs font-bold text-[var(--color-danger)]">
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                 <span>Confirm Permanent Deletion</span>
               </div>
-              <p className="text-[11px] text-[#333333] leading-relaxed">
+              <p className="text-[11px] text-[var(--color-ink-soft)] leading-relaxed">
                 This action is irreversible. All your profile information, photos, likes, matches, and settings will be permanently wiped.
               </p>
               <div className="flex items-center gap-2 pt-1">
