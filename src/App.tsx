@@ -4,6 +4,9 @@ import {
   TabType,
   FilterState,
   MatchRecord,
+  MatchWithProfile,
+  LikeEntry,
+  LikeQuota,
   ReportReason,
   DatingPreferences,
 } from './types';
@@ -54,12 +57,13 @@ function ArrowApp() {
   // Discover State
   const [discoverProfiles, setDiscoverProfiles] = useState<UserProfile[]>([]);
   const [cardIndex, setCardIndex] = useState(0);
-  const [cardAnimation, setCardAnimation] = useState<'like' | 'pass' | null>(null);
+  const [cardAnimation, setCardAnimation] = useState<'like' | 'pass' | 'super' | null>(null);
   const [isLoadingDiscover, setIsLoadingDiscover] = useState(true);
 
   // Likes & Matches State
-  const [incomingLikes, setIncomingLikes] = useState<Array<{ profile: UserProfile }>>([]);
-  const [matches, setMatches] = useState<Array<MatchRecord & { partnerProfile: UserProfile }>>([]);
+  const [incomingLikes, setIncomingLikes] = useState<LikeEntry[]>([]);
+  const [matches, setMatches] = useState<MatchWithProfile[]>([]);
+  const [quota, setQuota] = useState<LikeQuota | null>(null);
 
   // Filters State
   const [filters, setFilters] = useState<FilterState>({
@@ -82,9 +86,7 @@ function ArrowApp() {
     isOpen: false,
     partnerProfile: null,
   });
-  const [selectedMatch, setSelectedMatch] = useState<
-    (MatchRecord & { partnerProfile: UserProfile }) | null
-  >(null);
+  const [selectedMatch, setSelectedMatch] = useState<MatchWithProfile | null>(null);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isEditPhotosOpen, setIsEditPhotosOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
@@ -111,11 +113,11 @@ function ArrowApp() {
         try {
           const session = await authService.getSession();
           if (session?.user && mounted) {
-            const profile = await profileService.getProfile(session.user.id);
+            const profile = await profileService.getMyProfile();
             if (profile && mounted) {
               setCurrentUser(profile);
               setPrevUserId(profile.id);
-              await authService.updateLastLogin(profile.id);
+              await authService.updateLastLogin();
             }
           }
         } catch (err) {
@@ -139,15 +141,13 @@ function ArrowApp() {
     // Listen to Supabase Auth State changes
     const { unsubscribe } = authService.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const profile = await profileService.getProfile(session.user.id);
+        const profile = await profileService.getMyProfile();
         if (profile && mounted) {
           setCurrentUser(profile);
-          await authService.updateLastLogin(profile.id);
+          await authService.updateLastLogin();
 
-          // Notify about match logins
-          if (prevUserId && prevUserId !== profile.id) {
-            await checkMatchLogins(profile.id);
-          }
+          // Presence is surfaced from the matches payload after the first
+          // refresh, so nothing extra is fetched here.
           setPrevUserId(profile.id);
         }
       } else if (event === 'SIGNED_OUT') {
@@ -164,59 +164,50 @@ function ArrowApp() {
     };
   }, [prevUserId, currentUser?.id]);
 
-  // Check for match logins and show notifications
-  const checkMatchLogins = async (userId: string) => {
-    if (!isSupabaseConfigured || !supabase) return;
+  /**
+   * Tell the user which matches have been around recently.
+   *
+   * This used to query arrow_profiles directly for every match's last_login_at,
+   * which both relied on reading other people's rows and ignored whether they
+   * wanted their activity shown. The matches payload now carries lastActiveAt
+   * already, and the server nulls it for anyone who turned presence off.
+   */
+  const announceActiveMatches = (records: MatchWithProfile[]) => {
+    const sinceMs = Date.now() - 24 * 60 * 60 * 1000;
+    const active = records.filter((m) => {
+      const seen = m.partnerProfile.lastActiveAt;
+      return seen ? new Date(seen).getTime() > sinceMs : false;
+    });
 
-    try {
-      // Get user's matches
-      const { data: matchesData } = await supabase
-        .from('arrow_matches')
-        .select('user1_id, user2_id')
-        .or(`user1_id.eq.${userId},user2_id.eq.${userId}`);
+    if (active.length === 0) return;
 
-      if (!matchesData || matchesData.length === 0) return;
+    const names = active.slice(0, 3).map((m) => m.partnerProfile.name);
+    const rest = active.length - names.length;
+    const list = names.join(', ');
 
-      const matchIds = matchesData.map((m) =>
-        m.user1_id === userId ? m.user2_id : m.user1_id
-      );
-
-      // Get profiles of matches that logged in recently (last 24 hours)
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data: recentProfiles } = await supabase
-        .from('arrow_profiles')
-        .select('id, name, last_login_at')
-        .in('id', matchIds)
-        .gte('last_login_at', oneDayAgo)
-        .order('last_login_at', { ascending: false });
-
-      if (recentProfiles && recentProfiles.length > 0) {
-        for (const profile of recentProfiles) {
-          const loginTime = new Date(profile.last_login_at).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-          showToast(`${profile.name} is online (logged in at ${loginTime})`, 'info');
-        }
-      }
-    } catch (err) {
-      console.error('Error checking match logins:', err);
-    }
+    showToast(
+      rest > 0
+        ? `${list} and ${rest} more have been active today`
+        : `${list} ${names.length === 1 ? 'has' : 'have'} been active today`,
+      'info'
+    );
   };
 
   // 2. Refresh Feed, Likes & Matches data whenever currentUser or filters change
   const refreshAppData = useCallback(async () => {
     setIsLoadingDiscover(true);
     try {
-      const [feed, likesData, matchesData] = await Promise.all([
-        api.getDiscoverProfiles(currentUser?.id, filters),
-        api.getLikes(currentUser?.id),
-        api.getMatches(currentUser?.id),
+      const [feed, likesData, matchesData, quotaData] = await Promise.all([
+        api.getDiscoverProfiles(filters),
+        api.getLikes(),
+        api.getMatches(),
+        api.getLikeQuota(),
       ]);
       setDiscoverProfiles(feed);
       setCardIndex(0);
       setIncomingLikes(likesData);
       setMatches(matchesData);
+      setQuota(quotaData);
     } catch (err) {
       console.error('Failed to load ARROW app data', err);
     } finally {
@@ -229,16 +220,18 @@ function ArrowApp() {
   }, [refreshAppData]);
 
   // Discovery Actions
-  const handleLike = async (targetProfile: UserProfile) => {
+  const handleLike = async (targetProfile: UserProfile, isSuper = false) => {
     if (!currentUser) {
       setIsAuthModalOpen(true);
       showToast(`Log in or create a profile to send an Arrow to ${targetProfile.name}`, 'info');
       return;
     }
 
-    setCardAnimation('like');
+    setCardAnimation(isSuper ? 'super' : 'like');
     try {
-      const result = await api.likeProfile(currentUser.id, targetProfile.id);
+      const result = await api.likeProfile(targetProfile.id, isSuper);
+      if (result.quota) setQuota(result.quota);
+
       setTimeout(() => {
         setCardAnimation(null);
         setCardIndex((prev) => prev + 1);
@@ -246,15 +239,15 @@ function ArrowApp() {
         if (result.isMatch) {
           setMatchCelebration({
             isOpen: true,
-            partnerProfile: targetProfile,
-            matchRecord: result.matchRecord,
+            partnerProfile: result.partner || targetProfile,
+            matchRecord: result.match,
           });
           refreshAppData();
         }
       }, 250);
     } catch (err: any) {
       setCardAnimation(null);
-      showToast(err.message || 'Error recording like', 'error');
+      showToast(err.message || 'Could not send that arrow', 'error');
     }
   };
 
@@ -270,7 +263,7 @@ function ArrowApp() {
 
     setCardAnimation('pass');
     try {
-      await api.passProfile(currentUser.id, targetProfile.id);
+      await api.passProfile(targetProfile.id);
       setTimeout(() => {
         setCardAnimation(null);
         setCardIndex((prev) => prev + 1);
@@ -281,6 +274,39 @@ function ArrowApp() {
     }
   };
 
+  /** Undo the last swipe and put that person back at the front of the deck. */
+  const handleRewind = async () => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    try {
+      const result = await api.rewindLastSwipe();
+
+      if (!result.success) {
+        showToast(result.error || 'Nothing to undo', 'info');
+        return;
+      }
+
+      if (result.profile) {
+        const recovered = result.profile;
+        setDiscoverProfiles((prev) => {
+          const rest = prev.filter((p) => p.id !== recovered.id);
+          const head = rest.slice(0, cardIndex);
+          const tail = rest.slice(cardIndex);
+          return [...head, recovered, ...tail];
+        });
+        showToast(`${result.profile.name} is back in your deck`, 'success');
+      }
+
+      const refreshedQuota = await api.getLikeQuota();
+      setQuota(refreshedQuota);
+    } catch (err: any) {
+      showToast(err.message || 'Could not undo that', 'error');
+    }
+  };
+
   // Likes Tab Actions
   const handleLikeBackFromLikes = async (targetProfile: UserProfile) => {
     if (!currentUser) {
@@ -288,25 +314,27 @@ function ArrowApp() {
       return;
     }
     try {
-      const result = await api.likeProfile(currentUser.id, targetProfile.id);
+      const result = await api.likeProfile(targetProfile.id);
+      if (result.quota) setQuota(result.quota);
+
       if (result.isMatch) {
         setMatchCelebration({
           isOpen: true,
-          partnerProfile: targetProfile,
-          matchRecord: result.matchRecord,
+          partnerProfile: result.partner || targetProfile,
+          matchRecord: result.match,
         });
       }
       showToast(`Connected with ${targetProfile.name}!`, 'success');
       refreshAppData();
     } catch (err: any) {
-      showToast(err.message || 'Error processing like', 'error');
+      showToast(err.message || 'Could not send that arrow', 'error');
     }
   };
 
   const handlePassFromLikes = async (targetProfile: UserProfile) => {
     if (!currentUser) return;
     try {
-      await api.passProfile(currentUser.id, targetProfile.id);
+      await api.passProfile(targetProfile.id);
       showToast(`Passed on ${targetProfile.name}`, 'info');
       refreshAppData();
     } catch (err) {
@@ -318,8 +346,9 @@ function ArrowApp() {
   const handleUnmatch = async (matchId: string, partnerName: string) => {
     if (!currentUser) return;
     try {
-      await api.unmatchUser(currentUser.id, matchId);
+      await api.unmatchUser(matchId);
       showToast(`Unmatched with ${partnerName}`, 'info');
+      setSelectedMatch(null);
       refreshAppData();
     } catch (err) {
       showToast('Failed to unmatch', 'error');
@@ -330,48 +359,82 @@ function ArrowApp() {
   const handleSubmitReport = async (reason: ReportReason, details: string) => {
     if (!currentUser || !reportTarget) return;
     try {
-      await api.reportUser(currentUser.id, reportTarget.id, reason, details);
-      // Also automatically block the user
-      await api.blockUser(currentUser.id, reportTarget.id);
+      // One call files the report and blocks in the same transaction, so the
+      // person is gone the moment the report lands.
+      await api.reportUser(reportTarget.id, reason, details, true);
       showToast(`Report received. ${reportTarget.name} has been blocked.`, 'info');
       setReportTarget(null);
       setDetailProfile(null);
       setSelectedMatch(null);
       refreshAppData();
-    } catch (err) {
-      showToast('Failed to submit report', 'error');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to submit report', 'error');
+    }
+  };
+
+  const handleBlockUser = async (target: UserProfile) => {
+    if (!currentUser) return;
+    try {
+      await api.blockUser(target.id);
+      showToast(`${target.name} has been blocked`, 'info');
+      setDetailProfile(null);
+      setSelectedMatch(null);
+      refreshAppData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to block', 'error');
     }
   };
 
   // Profile Updates
   const handleUpdateProfile = async (updatedData: Partial<UserProfile>) => {
     if (!currentUser) return;
-    const updated = await api.updateProfile(currentUser.id, updatedData);
+    const updated = await api.updateProfile(updatedData);
     setCurrentUser(updated);
     showToast('Profile updated', 'success');
   };
 
+  /**
+   * Photos are already persisted individually as they are uploaded or removed,
+   * so this only needs to commit the order and refresh the local copy.
+   */
   const handleUpdatePhotos = async (photos: string[]) => {
     if (!currentUser) return;
-    const updated = await api.updateProfile(currentUser.id, { photos });
-    setCurrentUser(updated);
+    setCurrentUser({ ...currentUser, photos });
+    const refreshed = await api.getMyProfile();
+    if (refreshed) setCurrentUser(refreshed);
   };
 
   const handleUpdatePreferences = async (prefs: DatingPreferences) => {
     if (!currentUser) return;
-    await api.updatePreferences(currentUser.id, prefs);
+    await api.updatePreferences(prefs);
+    showToast('Preferences saved', 'success');
+    refreshAppData();
   };
 
-  const handleUpdateWhatsApp = async (
-    allowWhatsApp: boolean,
-    whatsappNumber: string
-  ) => {
+  const handleUpdateWhatsApp = async (allowWhatsApp: boolean, whatsappNumber: string) => {
     if (!currentUser) return;
-    const updated = await api.updateProfile(currentUser.id, {
-      allowWhatsApp,
-      whatsappNumber,
-    });
+    const updated = await api.setWhatsApp(allowWhatsApp, whatsappNumber);
     setCurrentUser(updated);
+    showToast(
+      allowWhatsApp
+        ? 'Your number will be shared with matches only'
+        : 'Your number is no longer shared',
+      'success'
+    );
+  };
+
+  /** Pause hides you from discovery without losing matches or conversations. */
+  const handleTogglePause = async (isPaused: boolean) => {
+    if (!currentUser) return;
+    const updated = await api.setVisibility(isPaused);
+    if (updated) setCurrentUser(updated);
+    showToast(isPaused ? 'Your profile is hidden from discovery' : 'You are visible again', 'info');
+  };
+
+  const handleUnblock = async (userId: string) => {
+    await api.unblockUser(userId);
+    showToast('Unblocked', 'info');
+    refreshAppData();
   };
 
   // Account Management
@@ -390,7 +453,7 @@ function ArrowApp() {
 
   const handleDeleteAccount = async () => {
     if (!currentUser) return;
-    await api.deleteAccount(currentUser.id);
+    await api.deleteAccount();
     setCurrentUser(null);
     setIsSettingsOpen(false);
     showToast('Account deleted', 'info');

@@ -13,39 +13,39 @@ interface ReportModalProps {
 
 const REPORT_REASONS: Array<{ value: ReportReason; label: string; description: string }> = [
   {
-    value: 'inappropriate',
-    label: 'Inappropriate Content',
-    description: 'Offensive bio, inappropriate photos, or unwanted behavior',
+    value: 'inappropriate_photos',
+    label: 'Inappropriate content',
+    description: 'Offensive bio, explicit photos, or unwanted sexual content',
   },
   {
     value: 'harassment',
-    label: 'Harassment & Bullying',
+    label: 'Harassment or bullying',
     description: 'Targeted hostility, abusive messages, or threats',
   },
   {
     value: 'underage',
-    label: 'Suspected Underage User',
-    description: 'Arrow is strictly for adults aged 18 and older',
+    label: 'Suspected underage user',
+    description: 'ARROW is strictly for adults aged 18 and over',
   },
   {
-    value: 'impersonation',
-    label: 'Impersonation or Fake Profile',
-    description: 'Using someone else\'s photos or deceptive identity',
+    value: 'fake_profile',
+    label: 'Fake profile or impersonation',
+    description: "Using someone else's photos or a deceptive identity",
   },
   {
-    value: 'scam',
-    label: 'Scam or Commercial Solicitation',
-    description: 'Asking for money, cryptocurrency, or promoting services',
+    value: 'spam_scam',
+    label: 'Scam or spam',
+    description: 'Asking for money, promoting a service, or automated messaging',
   },
   {
-    value: 'spam',
-    label: 'Spam or Bot',
-    description: 'Repetitive or automated non-human interactions',
+    value: 'offline_behavior',
+    label: 'Something that happened offline',
+    description: 'Concerning behaviour during or after meeting in person',
   },
   {
     value: 'other',
-    label: 'Other Safety Concern',
-    description: 'Any other safety or security violation',
+    label: 'Other safety concern',
+    description: 'Anything else that made you feel unsafe',
   },
 ];
 
@@ -55,7 +55,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   onClose,
   onSubmitReport,
 }) => {
-  const [selectedReason, setSelectedReason] = useState<ReportReason>('inappropriate');
+  const [selectedReason, setSelectedReason] = useState<ReportReason>('inappropriate_photos');
   const [details, setDetails] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 

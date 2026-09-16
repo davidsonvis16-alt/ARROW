@@ -1,268 +1,222 @@
-import { supabase } from '../lib/supabase';
-import { UserProfile, FilterState } from '../types';
+import { getSupabase, supabase } from '../lib/supabase';
+import { rpc, rpcSafe } from './rpc';
+import { buildPhotoPath, forgetPhoto, resolvePhotoUrls } from './photoService';
+import {
+  DatingPreferences,
+  FilterState,
+  Gender,
+  PromptItem,
+  UserProfile,
+} from '../types';
+
+const BUCKET = 'arrow-profile-photos';
+
+interface RawPhoto {
+  path: string | null;
+  url: string | null;
+}
+
+interface RawProfile {
+  id: string;
+  name: string;
+  age: number | null;
+  gender: UserProfile['gender'];
+  location: string | null;
+  bio: string | null;
+  interests: string[] | null;
+  lookingFor: string | null;
+  prompts: PromptItem[] | null;
+  allowWhatsApp: boolean;
+  isVerifiedAdult: boolean;
+  isPaused?: boolean;
+  lastActiveAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  photos: RawPhoto[] | null;
+  // Present only when the server decided you are entitled to them.
+  dateOfBirth?: string | null;
+  whatsappNumber?: string | null;
+  showOnlineStatus?: boolean;
+}
+
+/**
+ * Map a server profile into the shape the UI uses, signing photo references on
+ * the way through. The server chooses which fields exist; this function never
+ * invents one, so a private field simply stays undefined.
+ */
+async function hydrate(raw: RawProfile | null): Promise<UserProfile | null> {
+  if (!raw) return null;
+
+  const photos = await resolvePhotoUrls((raw.photos || []).map((p) => p.path || p.url));
+
+  return {
+    id: raw.id,
+    name: raw.name,
+    dateOfBirth: raw.dateOfBirth || '',
+    age: raw.age ?? 0,
+    gender: raw.gender,
+    location: raw.location || '',
+    bio: raw.bio || '',
+    photos,
+    interests: raw.interests || [],
+    lookingFor: raw.lookingFor || 'Meaningful dating',
+    prompts: Array.isArray(raw.prompts) ? raw.prompts : [],
+    allowWhatsApp: Boolean(raw.allowWhatsApp),
+    whatsappNumber: raw.whatsappNumber || undefined,
+    isVerifiedAdult: Boolean(raw.isVerifiedAdult),
+    lastActiveAt: raw.lastActiveAt ?? null,
+    isPaused: Boolean(raw.isPaused),
+    showOnlineStatus: raw.showOnlineStatus ?? true,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+export async function hydrateProfile(raw: unknown): Promise<UserProfile | null> {
+  return hydrate(raw as RawProfile | null);
+}
 
 export const profileService = {
+  /** Your own profile, including the private fields you are entitled to. */
+  async getMyProfile(): Promise<UserProfile | null> {
+    return hydrate(await rpc<RawProfile | null>('arrow_get_my_profile'));
+  },
+
   /**
-   * Fetch full profile by user ID
+   * Another user's profile. The server returns null unless a relationship
+   * justifies the read, so a guessed id yields nothing.
    */
   async getProfile(userId: string): Promise<UserProfile | null> {
-    if (!supabase) return null;
-
-    const { data: profileData, error: profileError } = await supabase
-      .from('arrow_profiles')
-      .select(`
-        id,
-        name,
-        date_of_birth,
-        age,
-        gender,
-        location,
-        bio,
-        interests,
-        looking_for,
-        prompts,
-        allow_whatsapp,
-        whatsapp_number,
-        is_verified_adult,
-        created_at,
-        updated_at
-      `)
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (profileError || !profileData) {
-      return null;
-    }
-
-    // Fetch ordered photos
-    const { data: photoData } = await supabase
-      .from('arrow_profile_photos')
-      .select('photo_url, display_order')
-      .eq('user_id', userId)
-      .order('display_order', { ascending: true });
-
-    const photos = (photoData || []).map((p) => p.photo_url);
-
-    return {
-      id: profileData.id,
-      name: profileData.name,
-      dateOfBirth: profileData.date_of_birth,
-      age: profileData.age,
-      gender: profileData.gender,
-      location: profileData.location,
-      bio: profileData.bio || '',
-      interests: profileData.interests || [],
-      lookingFor: profileData.looking_for || 'Meaningful dating',
-      prompts: Array.isArray(profileData.prompts) ? profileData.prompts : [],
-      allowWhatsApp: Boolean(profileData.allow_whatsapp),
-      whatsappNumber: profileData.whatsapp_number || undefined,
-      isVerifiedAdult: Boolean(profileData.is_verified_adult),
-      createdAt: profileData.created_at,
-      updatedAt: profileData.updated_at,
-      photos,
-    };
+    return hydrate(await rpc<RawProfile | null>('arrow_get_profile', { p_profile_id: userId }));
   },
 
-  /**
-   * Update profile information
-   */
-  async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile> {
-    if (!supabase) {
-      throw new Error('Supabase client is not configured');
-    }
-
-    const payload: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
-
-    if (updates.name !== undefined) payload.name = updates.name;
-    if (updates.gender !== undefined) payload.gender = updates.gender;
-    if (updates.location !== undefined) payload.location = updates.location;
-    if (updates.bio !== undefined) payload.bio = updates.bio;
-    if (updates.interests !== undefined) payload.interests = updates.interests;
-    if (updates.lookingFor !== undefined) payload.looking_for = updates.lookingFor;
-    if (updates.prompts !== undefined) payload.prompts = updates.prompts;
-    if (updates.allowWhatsApp !== undefined) payload.allow_whatsapp = updates.allowWhatsApp;
-    if (updates.whatsappNumber !== undefined) payload.whatsapp_number = updates.whatsappNumber;
-
-    const { error } = await supabase
-      .from('arrow_profiles')
-      .update(payload)
-      .eq('id', userId);
-
-    if (error) {
-      throw error;
-    }
-
-    const updated = await this.getProfile(userId);
-    if (!updated) {
-      throw new Error('Failed to retrieve profile after update');
-    }
-    return updated;
-  },
-
-  /**
-   * Safe discovery feed using secure database RPC
-   * Ensures private data (DOB, WhatsApp phone) is NEVER returned to callers
-   */
-  async getDiscoverProfiles(filters?: FilterState): Promise<UserProfile[]> {
-    if (!supabase) return [];
-
-    const ageMin = filters?.ageMin ?? 18;
-    const ageMax = filters?.ageMax ?? 65;
-    const genders = filters?.genders && filters.genders.length > 0 && !filters.genders.includes('everyone')
-      ? filters.genders
-      : null;
-    const location = filters?.location?.trim() || null;
-
-    // Call secure Postgres RPC function
-    const { data, error } = await supabase.rpc('arrow_get_discover_feed', {
-      p_age_min: ageMin,
-      p_age_max: ageMax,
-      p_genders: genders,
-      p_location: location,
+  async updateProfile(updates: Partial<UserProfile>): Promise<UserProfile> {
+    const raw = await rpc<RawProfile>('arrow_upsert_my_profile', {
+      p_name: updates.name ?? null,
+      p_gender: updates.gender ?? null,
+      p_location: updates.location ?? null,
+      p_bio: updates.bio ?? null,
+      p_interests: updates.interests ?? null,
+      p_looking_for: updates.lookingFor ?? null,
+      p_prompts: updates.prompts ?? null,
     });
 
-    if (error) {
-      console.warn('RPC arrow_get_discover_feed error, falling back to secure view:', error);
-      // Fallback to arrow_discoverable_profiles safe view
-      const { data: viewData, error: viewError } = await supabase
-        .from('arrow_discoverable_profiles')
-        .select('*')
-        .gte('age', ageMin)
-        .lte('age', ageMax)
-        .limit(30);
+    const profile = await hydrate(raw);
+    if (!profile) throw new Error('Could not load your profile after saving.');
+    return profile;
+  },
 
-      if (viewError || !viewData) return [];
+  /** Consent for contact sharing. The number itself never comes back here. */
+  async setWhatsApp(allow: boolean, number?: string): Promise<UserProfile> {
+    const raw = await rpc<RawProfile>('arrow_set_whatsapp', {
+      p_allow: allow,
+      p_number: number ?? null,
+    });
 
-      return viewData.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        dateOfBirth: '', // Private field omitted
-        age: item.age,
-        gender: item.gender,
-        location: item.location,
-        bio: item.bio || '',
-        interests: item.interests || [],
-        lookingFor: item.looking_for || 'Meaningful dating',
-        prompts: Array.isArray(item.prompts) ? item.prompts : [],
-        allowWhatsApp: Boolean(item.allow_whatsapp),
-        // whatsappNumber is NOT included in view
-        isVerifiedAdult: Boolean(item.is_verified_adult),
-        createdAt: item.created_at,
-        updatedAt: item.created_at,
-        photos: item.photos || [],
-      }));
-    }
+    const profile = await hydrate(raw);
+    if (!profile) throw new Error('Could not load your profile after saving.');
+    return profile;
+  },
 
-    return (data || []).map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      dateOfBirth: '', // Never exposed
-      age: item.age,
-      gender: item.gender,
-      location: item.location,
-      bio: item.bio || '',
-      interests: item.interests || [],
-      lookingFor: item.looking_for || 'Meaningful dating',
-      prompts: Array.isArray(item.prompts) ? item.prompts : [],
-      allowWhatsApp: Boolean(item.allow_whatsapp),
-      isVerifiedAdult: Boolean(item.is_verified_adult),
-      createdAt: item.created_at,
-      updatedAt: item.created_at,
-      photos: item.photos || [],
-    }));
+  async setVisibility(isPaused: boolean, showOnlineStatus?: boolean): Promise<UserProfile | null> {
+    return hydrate(
+      await rpc<RawProfile>('arrow_set_visibility', {
+        p_is_paused: isPaused,
+        p_show_online_status: showOnlineStatus ?? null,
+      })
+    );
+  },
+
+  async getDiscoverProfiles(filters?: FilterState): Promise<UserProfile[]> {
+    const genders = filters?.genders?.filter((g): g is Exclude<Gender, 'everyone'> => g !== 'everyone');
+
+    const raw = await rpcSafe<RawProfile[]>(
+      'arrow_get_discover_feed',
+      {
+        p_age_min: filters?.ageMin ?? null,
+        p_age_max: filters?.ageMax ?? null,
+        p_genders: genders && genders.length > 0 ? genders : null,
+        p_location: filters?.location?.trim() || null,
+        p_interests: filters?.interests?.length ? filters.interests : null,
+        p_looking_for: filters?.lookingFor?.length ? filters.lookingFor : null,
+        p_limit: 30,
+      },
+      []
+    );
+
+    const profiles = await Promise.all(raw.map(hydrate));
+    return profiles.filter((p): p is UserProfile => p !== null);
+  },
+
+  async getPreferences(): Promise<DatingPreferences> {
+    return rpc<DatingPreferences>('arrow_get_my_preferences');
+  },
+
+  async updatePreferences(prefs: DatingPreferences): Promise<DatingPreferences> {
+    return rpc<DatingPreferences>('arrow_set_my_preferences', {
+      p_age_min: prefs.ageMin,
+      p_age_max: prefs.ageMax,
+      p_gender_preference: prefs.genderPreference.filter((g) => g !== 'everyone'),
+      p_location_preference: prefs.locationPreference ?? null,
+      p_max_distance_km: prefs.maxDistanceKm ?? 100,
+      p_intentions: prefs.intentions,
+    });
   },
 
   /**
-   * Upload profile photo to Supabase Storage bucket `arrow-profile-photos`
+   * Upload to your own storage folder, then register the path. The server
+   * rejects a path outside your folder, so a tampered client cannot attach an
+   * image to somebody else's profile.
    */
-  async uploadProfilePhoto(userId: string, file: File | Blob, order: number = 0): Promise<string> {
-    if (!supabase) {
-      throw new Error('Supabase client is not configured');
-    }
-
-    // Validate size (5MB)
+  async uploadProfilePhoto(userId: string, file: File | Blob): Promise<string> {
     if (file.size > 5 * 1024 * 1024) {
-      throw new Error('Image size must be less than 5MB');
+      throw new Error('Image size must be less than 5MB.');
     }
 
-    const fileExt = (file as File).name ? (file as File).name.split('.').pop() : 'jpg';
-    const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+    const path = buildPhotoPath(userId, file);
 
-    const { error: uploadError } = await supabase.storage
-      .from('arrow-profile-photos')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
+    const { error: uploadError } = await getSupabase()
+      .storage.from(BUCKET)
+      .upload(path, file, { cacheControl: '3600', upsert: false });
 
     if (uploadError) {
-      throw uploadError;
+      throw new Error(uploadError.message || 'Could not upload that photo.');
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from('arrow-profile-photos')
-      .getPublicUrl(fileName);
+    await rpc('arrow_add_photo', { p_storage_path: path, p_photo_url: null });
 
-    const photoUrl = publicUrlData.publicUrl;
-
-    // Record photo in arrow_profile_photos table
-    await supabase.from('arrow_profile_photos').insert({
-      user_id: userId,
-      photo_url: photoUrl,
-      display_order: order,
-    });
-
-    return photoUrl;
+    const [url] = await resolvePhotoUrls([path]);
+    return url || path;
   },
 
-  /**
-   * Delete a profile photo from storage & database
-   */
-  async deleteProfilePhoto(userId: string, photoUrl: string): Promise<void> {
-    if (!supabase) return;
+  async deleteProfilePhoto(photoRef: string): Promise<void> {
+    await rpc('arrow_delete_photo', { p_storage_path: photoRef });
+    forgetPhoto(photoRef);
 
-    // Delete DB record
-    await supabase
-      .from('arrow_profile_photos')
-      .delete()
-      .eq('user_id', userId)
-      .eq('photo_url', photoUrl);
-
-    // Extract path from public URL if possible
-    try {
-      const url = new URL(photoUrl);
-      const pathParts = url.pathname.split('arrow-profile-photos/');
-      if (pathParts.length > 1) {
-        const storagePath = decodeURIComponent(pathParts[1]);
-        await supabase.storage.from('arrow-profile-photos').remove([storagePath]);
-      }
-    } catch {
-      // Best effort for storage cleanup
+    if (supabase && !photoRef.startsWith('http')) {
+      await supabase.storage.from(BUCKET).remove([photoRef]).catch(() => undefined);
     }
   },
 
-  /**
-   * Securely retrieve matched partner's WhatsApp number (only if mutual match exists)
-   */
+  async reorderPhotos(paths: string[]): Promise<void> {
+    await rpc('arrow_reorder_photos', { p_paths: paths });
+  },
+
+  /** The one path to a match's phone number, and only with their consent. */
   async getMatchWhatsApp(matchId: string): Promise<{ allowWhatsApp: boolean; whatsappNumber: string | null }> {
-    if (!supabase) {
-      return { allowWhatsApp: false, whatsappNumber: null };
-    }
-
-    const { data, error } = await supabase.rpc('arrow_get_match_whatsapp_contact', {
-      p_match_id: matchId,
-    });
-
-    if (error || !data) {
-      console.warn('Error fetching match WhatsApp contact:', error);
-      return { allowWhatsApp: false, whatsappNumber: null };
-    }
+    const data = await rpcSafe<{ allowWhatsApp: boolean; whatsappNumber: string | null }>(
+      'arrow_get_match_whatsapp_contact',
+      { p_match_id: matchId },
+      { allowWhatsApp: false, whatsappNumber: null }
+    );
 
     return {
       allowWhatsApp: Boolean(data.allowWhatsApp),
       whatsappNumber: data.whatsappNumber || null,
     };
+  },
+
+  async touchActivity(): Promise<void> {
+    await rpcSafe('arrow_touch_activity', {}, null);
   },
 };

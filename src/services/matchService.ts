@@ -1,60 +1,51 @@
-import { supabase } from '../lib/supabase';
-import { UserProfile, MatchRecord } from '../types';
-import { profileService } from './profileService';
+import { rpc, rpcSafe } from './rpc';
+import { hydrateProfile } from './profileService';
+import { MatchWithProfile, MessagePreview } from '../types';
+
+interface RawMatch {
+  id: string;
+  user1Id: string;
+  user2Id: string;
+  matchedAt: string;
+  lastInteractionAt?: string;
+  partnerProfile: unknown;
+  unreadCount: number;
+  lastMessage: MessagePreview | null;
+}
 
 export const matchService = {
   /**
-   * Get all active matches for a user
+   * One call returns every match with its partner profile already attached.
+   * The old implementation fetched matches, then looked up each partner by id
+   * in a loop — which is both a round trip per row and exactly the pattern
+   * that invites IDOR.
    */
-  async getMatches(userId: string): Promise<Array<MatchRecord & { partnerProfile: UserProfile }>> {
-    if (!supabase) return [];
+  async getMatches(): Promise<MatchWithProfile[]> {
+    const raw = await rpcSafe<RawMatch[]>('arrow_get_matches', {}, []);
 
-    const { data: matchesData, error } = await supabase
-      .from('arrow_matches')
-      .select('*')
-      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`)
-      .order('matched_at', { ascending: false });
+    const matches = await Promise.all(
+      raw.map(async (record): Promise<MatchWithProfile | null> => {
+        const partnerProfile = await hydrateProfile(record.partnerProfile);
+        if (!partnerProfile) return null;
 
-    if (error || !matchesData) {
-      console.warn('Error fetching matches:', error);
-      return [];
-    }
-
-    const results: Array<MatchRecord & { partnerProfile: UserProfile }> = [];
-
-    for (const record of matchesData) {
-      const partnerId = record.user1_id === userId ? record.user2_id : record.user1_id;
-      const partnerProfile = await profileService.getProfile(partnerId);
-
-      if (partnerProfile) {
-        results.push({
+        return {
           id: record.id,
-          user1Id: record.user1_id,
-          user2Id: record.user2_id,
-          matchedAt: record.matched_at,
-          lastInteractionAt: record.last_interaction_at,
+          user1Id: record.user1Id,
+          user2Id: record.user2Id,
+          matchedAt: record.matchedAt,
+          lastInteractionAt: record.lastInteractionAt,
           partnerProfile,
-        });
-      }
-    }
+          unreadCount: Number(record.unreadCount || 0),
+          lastMessage: record.lastMessage,
+        };
+      })
+    );
 
-    return results;
+    return matches.filter((m): m is MatchWithProfile => m !== null);
   },
 
-  /**
-   * Unmatch a partner (removes match record from Supabase database)
-   */
+  /** Membership is proven server-side before anything is removed. */
   async unmatchUser(matchId: string): Promise<void> {
-    if (!supabase) return;
-
-    const { error } = await supabase
-      .from('arrow_matches')
-      .delete()
-      .eq('id', matchId);
-
-    if (error) {
-      console.error('Error unmatching:', error);
-      throw error;
-    }
+    await rpc('arrow_unmatch', { p_match_id: matchId });
   },
 };

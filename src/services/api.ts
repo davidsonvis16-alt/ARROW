@@ -1,30 +1,49 @@
 import {
-  UserProfile,
+  BlockedProfile,
+  ChatMessage,
   DatingPreferences,
-  MatchRecord,
-  ReportReason,
   FilterState,
+  LikeEntry,
+  LikeQuota,
+  LikeResult,
+  MatchWithProfile,
+  ReportReason,
+  UserProfile,
 } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { profileService } from './profileService';
 import { likeService } from './likeService';
 import { matchService } from './matchService';
+import { messageService } from './messageService';
 import { preferencesService } from './preferencesService';
 import { blockService } from './blockService';
 import { reportService } from './reportService';
 import { authService } from './authService';
 import { storageService } from './storageService';
 
+/**
+ * The application's data layer.
+ *
+ * Note the signatures: nothing here takes a "current user" id. On the Supabase
+ * path the server derives the actor from the session, and in the local demo
+ * path the actor comes from storageService. Passing an actor id across this
+ * boundary is what let a tampered client act as somebody else, so the
+ * parameter no longer exists to be tampered with.
+ */
+
+function localActor(): string | null {
+  return storageService.getCurrentUserId();
+}
+
 export const api = {
-  // Discovery Feed
-  async getDiscoverProfiles(currentUserId?: string | null, filters?: FilterState): Promise<UserProfile[]> {
+  // ---------------------------------------------------------------- discovery
+  async getDiscoverProfiles(filters?: FilterState): Promise<UserProfile[]> {
     if (isSupabaseConfigured) {
       return profileService.getDiscoverProfiles(filters);
     }
-    return storageService.getDiscoverFeed(currentUserId, filters);
+    return storageService.getDiscoverFeed(localActor(), filters);
   },
 
-  // Single Profile
   async getProfile(userId: string): Promise<UserProfile | null> {
     if (isSupabaseConfigured) {
       return profileService.getProfile(userId);
@@ -32,137 +51,228 @@ export const api = {
     return storageService.getProfile(userId);
   },
 
-  // Send Arrow (Like)
-  async likeProfile(
-    fromUserId: string,
-    toUserId: string
-  ): Promise<{ isMatch: boolean; matchRecord?: MatchRecord }> {
+  async getMyProfile(): Promise<UserProfile | null> {
     if (isSupabaseConfigured) {
-      return likeService.likeProfile(fromUserId, toUserId);
+      return profileService.getMyProfile();
     }
-    const result = storageService.recordLike(fromUserId, toUserId, false);
+    const id = localActor();
+    return id ? storageService.getProfile(id) : null;
+  },
+
+  // -------------------------------------------------------------------- likes
+  async likeProfile(targetId: string, isSuper = false): Promise<LikeResult> {
+    if (isSupabaseConfigured) {
+      return likeService.likeProfile(targetId, isSuper);
+    }
+
+    const actor = localActor();
+    if (!actor) throw new Error('Log in to send an arrow.');
+
+    const result = storageService.recordLike(actor, targetId, false);
     return {
       isMatch: result.isMatch,
-      matchRecord: result.match,
+      match: result.match,
+      partner: storageService.getProfile(targetId) || undefined,
     };
   },
 
-  // Pass profile
-  async passProfile(fromUserId: string, toUserId: string): Promise<void> {
+  async passProfile(targetId: string): Promise<void> {
     if (isSupabaseConfigured) {
-      return likeService.passProfile(fromUserId, toUserId);
+      return likeService.passProfile(targetId);
     }
-    storageService.recordLike(fromUserId, toUserId, true);
+    const actor = localActor();
+    if (actor) storageService.recordLike(actor, targetId, true);
   },
 
-  // Received Likes (Arrows from others)
-  async getLikes(currentUserId?: string | null): Promise<Array<{ profile: UserProfile }>> {
-    if (!currentUserId) return [];
+  async rewindLastSwipe(): Promise<{ success: boolean; error?: string; profile?: UserProfile }> {
     if (isSupabaseConfigured) {
-      return likeService.getReceivedLikes(currentUserId);
+      return likeService.rewindLastSwipe();
     }
-    const raw = storageService.getIncomingLikes(currentUserId);
-    return raw.map((r) => ({ profile: r.profile }));
+    return { success: false, error: 'Undo needs a connected account.' };
   },
 
-  // User Matches
-  async getMatches(
-    currentUserId?: string | null
-  ): Promise<Array<MatchRecord & { partnerProfile: UserProfile }>> {
-    if (!currentUserId) return [];
+  async getLikes(): Promise<LikeEntry[]> {
     if (isSupabaseConfigured) {
-      return matchService.getMatches(currentUserId);
+      return likeService.getReceivedLikes();
     }
-    return storageService.getUserMatches(currentUserId);
+    return storageService
+      .getIncomingLikes(localActor())
+      .map((r) => ({ profile: r.profile, isSuper: false, createdAt: r.like.createdAt }));
   },
 
-  // Block user
-  async blockUser(blockerId: string, blockedId: string): Promise<void> {
+  async getSentLikes(): Promise<LikeEntry[]> {
     if (isSupabaseConfigured) {
-      return blockService.blockUser(blockerId, blockedId);
+      return likeService.getSentLikes();
     }
-    storageService.blockUser(blockerId, blockedId);
+    return [];
   },
 
-  // Unblock user
-  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+  async getLikeQuota(): Promise<LikeQuota | null> {
     if (isSupabaseConfigured) {
-      return blockService.unblockUser(blockerId, blockedId);
+      return likeService.getQuota();
     }
-    storageService.unblockUser(blockerId, blockedId);
+    return null;
   },
 
-  // Report user
-  async reportUser(
-    reporterId: string,
-    reportedId: string,
-    reason: ReportReason,
-    details?: string
-  ): Promise<void> {
+  // ------------------------------------------------------------------ matches
+  async getMatches(): Promise<MatchWithProfile[]> {
     if (isSupabaseConfigured) {
-      return reportService.reportUser(reporterId, reportedId, reason, details);
+      return matchService.getMatches();
     }
-    storageService.createReport({
-      reporterId,
-      reportedId,
-      reason,
-      details,
-    });
+
+    return storageService.getUserMatches(localActor()).map((m) => ({
+      ...m,
+      unreadCount: 0,
+      lastMessage: null,
+    }));
   },
 
-  // Unmatch
-  async unmatchUser(currentUserId: string, matchId: string): Promise<void> {
+  async unmatchUser(matchId: string): Promise<void> {
     if (isSupabaseConfigured) {
       return matchService.unmatchUser(matchId);
     }
-    storageService.unmatch(currentUserId, matchId);
+    const actor = localActor();
+    if (actor) storageService.unmatch(actor, matchId);
   },
 
-  // Update Profile
-  async updateProfile(userId: string, data: Partial<UserProfile>): Promise<UserProfile> {
+  // ----------------------------------------------------------------- messages
+  async getMessages(matchId: string): Promise<ChatMessage[]> {
     if (isSupabaseConfigured) {
-      return profileService.updateProfile(userId, data);
+      return messageService.getMessages(matchId);
     }
-    const existing = storageService.getProfile(userId);
-    if (!existing) {
-      throw new Error('Profile not found');
+    return [];
+  },
+
+  async sendMessage(matchId: string, body: string): Promise<ChatMessage> {
+    if (isSupabaseConfigured) {
+      return messageService.sendMessage(matchId, body);
     }
-    const updated: UserProfile = {
-      ...existing,
-      ...data,
-      updatedAt: new Date().toISOString(),
-    };
+    throw new Error('Messaging needs a connected account.');
+  },
+
+  async markMessagesRead(matchId: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      await messageService.markRead(matchId);
+    }
+  },
+
+  subscribeToMessages(matchId: string, onMessage: (message: ChatMessage) => void): () => void {
+    if (isSupabaseConfigured) {
+      return messageService.subscribe(matchId, onMessage);
+    }
+    return () => undefined;
+  },
+
+  // ------------------------------------------------------------------- safety
+  async blockUser(targetId: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      return blockService.blockUser(targetId);
+    }
+    const actor = localActor();
+    if (actor) storageService.blockUser(actor, targetId);
+  },
+
+  async unblockUser(targetId: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      return blockService.unblockUser(targetId);
+    }
+    const actor = localActor();
+    if (actor) storageService.unblockUser(actor, targetId);
+  },
+
+  async getBlockedProfiles(): Promise<BlockedProfile[]> {
+    if (isSupabaseConfigured) {
+      return blockService.getBlockedProfiles();
+    }
+
+    const actor = localActor();
+    if (!actor) return [];
+
+    return storageService.getBlockedUserIds(actor).map((id) => {
+      const profile = storageService.getProfile(id);
+      return {
+        id,
+        name: profile?.name || 'Someone',
+        location: profile?.location || null,
+        blockedAt: new Date().toISOString(),
+        photo: profile?.photos?.[0] || null,
+      };
+    });
+  },
+
+  async reportUser(
+    reportedId: string,
+    reason: ReportReason,
+    details?: string,
+    alsoBlock = true
+  ): Promise<void> {
+    if (isSupabaseConfigured) {
+      return reportService.reportUser(reportedId, reason, details, alsoBlock);
+    }
+
+    const actor = localActor();
+    if (!actor) return;
+
+    storageService.createReport({ reporterId: actor, reportedId, reason, details });
+    if (alsoBlock) storageService.blockUser(actor, reportedId);
+  },
+
+  // ------------------------------------------------------------------ profile
+  async updateProfile(data: Partial<UserProfile>): Promise<UserProfile> {
+    if (isSupabaseConfigured) {
+      return profileService.updateProfile(data);
+    }
+
+    const actor = localActor();
+    const existing = actor ? storageService.getProfile(actor) : null;
+    if (!existing) throw new Error('Profile not found');
+
+    const updated: UserProfile = { ...existing, ...data, updatedAt: new Date().toISOString() };
     storageService.saveProfile(updated);
     return updated;
   },
 
-  // Update Preferences
-  async updatePreferences(userId: string, prefs: DatingPreferences): Promise<void> {
+  async setWhatsApp(allow: boolean, number?: string): Promise<UserProfile> {
     if (isSupabaseConfigured) {
-      await preferencesService.updatePreferences(userId, prefs);
+      return profileService.setWhatsApp(allow, number);
+    }
+    return this.updateProfile({ allowWhatsApp: allow, whatsappNumber: number });
+  },
+
+  async setVisibility(isPaused: boolean, showOnlineStatus?: boolean): Promise<UserProfile | null> {
+    if (isSupabaseConfigured) {
+      return profileService.setVisibility(isPaused, showOnlineStatus);
+    }
+    return this.updateProfile({ isPaused, showOnlineStatus });
+  },
+
+  async updatePreferences(prefs: DatingPreferences): Promise<void> {
+    if (isSupabaseConfigured) {
+      await preferencesService.updatePreferences(prefs);
       return;
     }
-    storageService.savePreferences(userId, prefs);
+    const actor = localActor();
+    if (actor) storageService.savePreferences(actor, prefs);
   },
 
-  // Get Preferences
-  async getPreferences(userId: string): Promise<DatingPreferences> {
+  async getPreferences(): Promise<DatingPreferences> {
     if (isSupabaseConfigured) {
-      return preferencesService.getPreferences(userId);
+      return preferencesService.getPreferences();
     }
-    return storageService.getPreferences(userId);
+    const actor = localActor();
+    return storageService.getPreferences(actor || '');
   },
 
-  // Delete Account
-  async deleteAccount(userId: string): Promise<void> {
+  async deleteAccount(): Promise<void> {
     if (isSupabaseConfigured) {
       await authService.deleteAccount();
       return;
     }
-    storageService.deleteProfile(userId);
+    const actor = localActor();
+    if (actor) storageService.deleteProfile(actor);
   },
 
-  // Photo Upload
+  // ------------------------------------------------------------------- photos
   async uploadPhoto(file: File, userId: string): Promise<string> {
     if (!file.type.startsWith('image/')) {
       throw new Error('Please select a valid image file (JPEG, PNG, WebP).');
@@ -175,27 +285,35 @@ export const api = {
       return profileService.uploadProfilePhoto(userId, file);
     }
 
-    // Local fallback for offline preview
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          resolve(reader.result);
-        } else {
-          reject(new Error('Failed to read image file'));
-        }
-      };
+      reader.onload = () =>
+        typeof reader.result === 'string'
+          ? resolve(reader.result)
+          : reject(new Error('Failed to read image file'));
       reader.onerror = () => reject(new Error('File reading error'));
       reader.readAsDataURL(file);
     });
   },
 
-  // Match WhatsApp Number Retrieval (Private, authorized only upon mutual match)
+  async deletePhoto(photoRef: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      return profileService.deleteProfilePhoto(photoRef);
+    }
+  },
+
+  // ------------------------------------------------------------------ contact
   async getMatchWhatsApp(matchId: string): Promise<{ allowWhatsApp: boolean; whatsappNumber: string | null }> {
     if (isSupabaseConfigured) {
       return profileService.getMatchWhatsApp(matchId);
     }
     return { allowWhatsApp: true, whatsappNumber: '+1 (555) 019-2834' };
+  },
+
+  async touchActivity(): Promise<void> {
+    if (isSupabaseConfigured) {
+      await profileService.touchActivity();
+    }
   },
 };
 
@@ -204,6 +322,7 @@ export {
   profileService,
   likeService,
   matchService,
+  messageService,
   preferencesService,
   blockService,
   reportService,

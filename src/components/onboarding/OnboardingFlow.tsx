@@ -157,21 +157,15 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     }
   };
 
-  const createMinimalProfile = async (userId: string) => {
+  const createMinimalProfile = async () => {
     if (!supabase) return;
-    await supabase.from('arrow_profiles').upsert({
-      id: userId,
+
+    // One call creates the profile row and seeds default preferences. The
+    // server uses the session's own user id, so there is nothing to pass.
+    await profileService.updateProfile({
       name: name.trim() || 'Arrow User',
       gender,
-      location: location.trim() || null,
-      is_verified_adult: false,
-    });
-    await supabase.from('arrow_preferences').upsert({
-      user_id: userId,
-      age_min: 18,
-      age_max: 65,
-      gender_preference: ['woman', 'man', 'non-binary'],
-      intentions: ['Meaningful dating'],
+      location: location.trim() || undefined,
     });
   };
 
@@ -217,7 +211,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         showToast('Please enter your general city or location', 'warning');
         return;
       }
-      await createMinimalProfile(existingAuthUserId);
+      await createMinimalProfile();
       await checkEmailVerificationStatus();
       if (isEmailVerified) {
         setStep(3);
@@ -341,42 +335,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     if (!existingAuthUserId) return;
     setIsSubmitting(true);
     try {
-      let uploadedPhotoUrls: string[] = [];
-      for (let i = 0; i < selectedFiles.length; i++) {
+      for (const file of selectedFiles) {
         try {
-          const url = await profileService.uploadProfilePhoto(existingAuthUserId, selectedFiles[i], i);
-          uploadedPhotoUrls.push(url);
+          await profileService.uploadProfilePhoto(existingAuthUserId, file);
         } catch (uploadErr) {
           console.warn('Photo upload warning:', uploadErr);
         }
       }
 
-      if (uploadedPhotoUrls.length === 0 && photos.length > 0) {
-        uploadedPhotoUrls = photos;
-      }
-
-      const finalPhotos = uploadedPhotoUrls.length > 0 ? uploadedPhotoUrls : photos;
-
-      await supabase.from('arrow_profiles').upsert({
-        id: existingAuthUserId,
+      await profileService.updateProfile({
         name: name.trim(),
-        bio: bio.trim(),
-        interests,
-        looking_for: lookingFor,
-        allow_whatsapp: Boolean(allowWhatsApp),
-        whatsapp_number: allowWhatsApp ? whatsappNumber.trim() : null,
-        updated_at: new Date().toISOString(),
-      });
-
-      const createdProfile: UserProfile = {
-        id: existingAuthUserId,
-        name: name.trim(),
-        dateOfBirth,
-        age: calculatedAge,
         gender,
         location: location.trim(),
         bio: bio.trim(),
-        photos: finalPhotos,
         interests,
         lookingFor,
         prompts: [
@@ -386,12 +357,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
             answer: 'Exploring quiet coffee spots and listening to vinyl records.',
           },
         ],
-        allowWhatsApp,
-        whatsappNumber: allowWhatsApp ? whatsappNumber.trim() : undefined,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isVerifiedAdult: true,
-      };
+      });
+
+      if (allowWhatsApp && whatsappNumber.trim()) {
+        await profileService.setWhatsApp(true, whatsappNumber.trim());
+      }
+
+      // Read the profile back rather than trusting a locally assembled copy:
+      // the server is the only thing that knows the final state, including
+      // which photos actually landed.
+      const createdProfile = await profileService.getMyProfile();
+      if (!createdProfile) {
+        throw new Error('Your profile was saved but could not be loaded. Please reopen the app.');
+      }
 
       onComplete(createdProfile);
     } catch (err: any) {

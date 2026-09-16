@@ -1,36 +1,22 @@
-import { supabase } from '../lib/supabase';
+import { rpc } from './rpc';
 import { ReportReason } from '../types';
 
 export const reportService = {
   /**
-   * Submit a private moderation report
-   * RLS ensures reports are private and cannot be read by other users
+   * File a moderation report. Blocking alongside it is the default: someone
+   * worth reporting is someone you should stop hearing from immediately.
    */
   async reportUser(
-    reporterId: string,
     reportedId: string,
     reason: ReportReason,
-    details?: string
+    details?: string,
+    alsoBlock = true
   ): Promise<void> {
-    if (!supabase) {
-      throw new Error('Supabase client is not configured');
-    }
-
-    if (reporterId === reportedId) {
-      throw new Error('Cannot report yourself');
-    }
-
-    const { error } = await supabase.from('arrow_reports').insert({
-      reporter_id: reporterId,
-      reported_id: reportedId,
-      reason,
-      details: details || '',
-      status: 'pending',
+    await rpc('arrow_report_user', {
+      p_target_id: reportedId,
+      p_reason: reason,
+      p_details: details || '',
+      p_also_block: alsoBlock,
     });
-
-    if (error) {
-      console.error('Error submitting report:', error);
-      throw error;
-    }
   },
 };

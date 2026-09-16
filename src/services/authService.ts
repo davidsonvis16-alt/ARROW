@@ -180,22 +180,44 @@ export const authService = {
   },
 
   /**
-   * Update the current user's last login timestamp
+   * Record that the current user is active. There is no user id parameter:
+   * the database stamps whoever the session says you are, so this cannot be
+   * used to touch another account.
    */
-  async updateLastLogin(userId: string): Promise<void> {
+  async updateLastLogin(): Promise<void> {
     if (!supabase) return;
     try {
-      await supabase
-        .from('arrow_profiles')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', userId);
+      await supabase.rpc('arrow_touch_activity');
     } catch (err) {
-      console.error('Error updating last login:', err);
+      console.warn('Could not record activity:', err);
     }
   },
 
   /**
-   * Delete the current user's account and all associated data
+   * Set a new password. Used after following a reset link, where Supabase has
+   * already exchanged the token for a session.
+   */
+  async updatePassword(newPassword: string): Promise<void> {
+    if (!supabase) {
+      throw new Error('Supabase client is not configured');
+    }
+
+    if (newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters.');
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      throw error;
+    }
+  },
+
+  /**
+   * Delete the current user's account and everything attached to it.
+   *
+   * The profile row is removed by a server function that acts on the session's
+   * own user, and every arrow_* row cascades from it. Storage is cleared by
+   * listing the caller's own folder, which the storage policy scopes to them.
    */
   async deleteAccount(): Promise<void> {
     if (!supabase) return;
@@ -207,32 +229,22 @@ export const authService = {
     }
 
     try {
-      const { data: photos } = await supabase
-        .from('arrow_profile_photos')
-        .select('photo_url')
-        .eq('user_id', user.id);
+      const { data: files } = await supabase.storage
+        .from('arrow-profile-photos')
+        .list(user.id, { limit: 100 });
 
-      if (photos && photos.length > 0) {
-        const paths = photos
-          .map((p) => {
-            try {
-              const url = new URL(p.photo_url);
-              const parts = url.pathname.split('arrow-profile-photos/');
-              return parts.length > 1 ? decodeURIComponent(parts[1]) : null;
-            } catch {
-              return null;
-            }
-          })
-          .filter(Boolean) as string[];
-
-        if (paths.length > 0) {
-          await supabase.storage.from('arrow-profile-photos').remove(paths);
-        }
+      if (files && files.length > 0) {
+        await supabase.storage
+          .from('arrow-profile-photos')
+          .remove(files.map((f) => `${user.id}/${f.name}`));
       }
-
-      await supabase.from('arrow_profiles').delete().eq('id', user.id);
     } catch (err) {
-      console.error('Error deleting account data:', err);
+      console.warn('Could not clear stored photos:', err);
+    }
+
+    const { error } = await supabase.rpc('arrow_delete_my_account');
+    if (error) {
+      throw new Error(error.message || 'Could not delete your account.');
     }
 
     await this.signOut();
