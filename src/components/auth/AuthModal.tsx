@@ -39,7 +39,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [savedProfiles, setSavedProfiles] = useState<UserProfile[]>([]);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset'>('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -55,8 +55,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setErrorMsg('Please enter both email and password.');
+
+    if (!email.trim()) {
+      setErrorMsg('Please enter your email address.');
       return;
     }
 
@@ -64,7 +65,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMsg('');
 
     try {
+      if (authMode === 'reset') {
+        await authService.resetPassword(email.trim());
+        // Worded so it reveals nothing about whether the address has an
+        // account: an "unknown email" response is an account-enumeration
+        // oracle, which on a dating site tells a stranger you are a member.
+        showToast('If that address has an account, a reset link is on its way.', 'success');
+        setAuthMode('signin');
+        return;
+      }
+
+      if (!password.trim()) {
+        setErrorMsg('Please enter your password.');
+        return;
+      }
+
       if (authMode === 'signup') {
+        if (password.length < 8) {
+          setErrorMsg('Please choose a password of at least 8 characters.');
+          return;
+        }
+
         const result = await authService.signUp({
           email: email.trim(),
           password,
@@ -76,17 +97,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (result.user && result.session) {
           showToast('Account created successfully', 'success');
           onStartOnboarding();
-        } else if (result.user) {
-          showToast('Account created. Please verify your email, then log in.', 'success');
-          setAuthMode('signin');
-          setPassword('');
         } else {
-          showToast('Account created. Please check your email.', 'success');
+          showToast('Account created. Check your email to verify it, then log in.', 'success');
           setAuthMode('signin');
           setPassword('');
         }
       } else {
-        const result = await authService.signIn(email.trim(), password);
+        await authService.signIn(email.trim(), password);
         showToast('Signed in successfully', 'success');
         onStartOnboarding();
       }
@@ -187,7 +204,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             <p className="text-[10px] text-[var(--color-stone-dark)]">{p.location}</p>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-[var(--color-arrow-orange)] flex items-center gap-1">
+                        <span className="text-xs font-bold text-[var(--color-arrow-orange-text)] flex items-center gap-1">
                           <span>Select</span>
                           <ChevronRight size={13} />
                         </span>
@@ -233,7 +250,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         ) : (
           <div className="space-y-5">
             {errorMsg && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2 text-xs text-red-700">
+              <div className="p-3 bg-[var(--color-danger-subtle)] border border-[var(--color-danger)]/30 rounded-2xl flex items-start gap-2 text-xs text-[var(--color-danger-text)]">
                 <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-600" />
                 <span>{errorMsg}</span>
               </div>
@@ -242,8 +259,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="space-y-4">
               <div className="space-y-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-ink)]">
-                  Create Account
+                  {authMode === 'signup'
+                    ? 'Create account'
+                    : authMode === 'reset'
+                      ? 'Reset your password'
+                      : 'Log in'}
                 </h4>
+
+                {authMode === 'reset' && (
+                  <p className="text-[11px] text-[var(--color-stone-dark)] leading-relaxed">
+                    Enter the address you signed up with and we will email you a link to set a
+                    new password.
+                  </p>
+                )}
                 {isSupabaseConfigured && (
                   <form onSubmit={handleEmailAuth} className="space-y-2">
                     <div className="space-y-1">
@@ -257,36 +285,68 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-[var(--color-ink)]">Password</label>
-                      <input
-                        type="password"
-                        required
-                        placeholder="Min 6 characters"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
-                      />
-                    </div>
-                    <Button
-                      variant="primary"
-                      fullWidth
-                      type="submit"
-                      disabled={loading}
-                    >
-                      {authMode === 'signup' ? 'Create Account' : 'Log In'}
+                    {authMode !== 'reset' && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-[var(--color-ink)]">Password</label>
+                        <input
+                          type="password"
+                          required
+                          minLength={authMode === 'signup' ? 8 : undefined}
+                          autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                          placeholder={authMode === 'signup' ? 'At least 8 characters' : 'Your password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)]"
+                        />
+                      </div>
+                    )}
+
+                    <Button variant="primary" fullWidth type="submit" disabled={loading}>
+                      {authMode === 'signup'
+                        ? 'Create account'
+                        : authMode === 'reset'
+                          ? 'Email me a reset link'
+                          : 'Log in'}
                     </Button>
+
+                    {authMode === 'signin' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode('reset');
+                          setErrorMsg('');
+                        }}
+                        className="w-full text-[11px] font-bold text-[var(--color-stone-dark)] hover:text-[var(--color-ink)] transition-colors py-1"
+                      >
+                        Forgot your password?
+                      </button>
+                    )}
+
+                    {authMode === 'reset' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode('signin');
+                          setErrorMsg('');
+                        }}
+                        className="w-full text-[11px] font-bold text-[var(--color-stone-dark)] hover:text-[var(--color-ink)] transition-colors py-1"
+                      >
+                        Back to log in
+                      </button>
+                    )}
                   </form>
                 )}
 
-                <Button
-                  variant="ghost"
-                  fullWidth
-                  onClick={() => setAuthMode((prev) => (prev === 'signin' ? 'signup' : 'signin'))}
-                  disabled={loading}
-                >
-                  {authMode === 'signin' ? 'Need an account? Sign up' : 'Have an account? Log in'}
-                </Button>
+                {authMode !== 'reset' && (
+                  <Button
+                    variant="ghost"
+                    fullWidth
+                    onClick={() => setAuthMode((prev) => (prev === 'signin' ? 'signup' : 'signin'))}
+                    disabled={loading}
+                  >
+                    {authMode === 'signin' ? 'Need an account? Sign up' : 'Have an account? Log in'}
+                  </Button>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -333,11 +393,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             referrerPolicy="no-referrer"
                           />
                         </div>
-                        <span className="text-xs font-bold text-[var(--color-ink)] group-hover:text-[var(--color-arrow-orange)] transition-colors">
+                        <span className="text-xs font-bold text-[var(--color-ink)] group-hover:text-[var(--color-arrow-orange-text)] transition-colors">
                           {p.name}, {p.age}
                         </span>
                       </div>
-                      <span className="text-xs font-bold text-[var(--color-ink)] group-hover:text-[var(--color-arrow-orange)] flex items-center gap-1">
+                      <span className="text-xs font-bold text-[var(--color-ink)] group-hover:text-[var(--color-arrow-orange-text)] flex items-center gap-1">
                         <span>Log In</span>
                         <ArrowRight size={13} />
                       </span>

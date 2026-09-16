@@ -61,7 +61,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Guest Intro Card */}
         <div className="bg-[var(--color-surface)] rounded-[28px] border border-[var(--color-border)] p-6 shadow-xs space-y-5">
-          <div className="w-14 h-14 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-arrow-orange)] mx-auto shadow-2xs">
+          <div className="w-14 h-14 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-arrow-orange-text)] mx-auto shadow-2xs">
             <User size={26} />
           </div>
 
@@ -193,7 +193,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-1 text-xs text-white/80 font-medium mt-0.5">
-              <MapPin size={12} className="text-[var(--color-arrow-orange)]" />
+              <MapPin size={12} className="text-[var(--color-arrow-orange-text)]" />
               <span>{currentUser.location}</span>
             </div>
           </div>

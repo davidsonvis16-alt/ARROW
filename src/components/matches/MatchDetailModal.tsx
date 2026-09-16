@@ -79,7 +79,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
             <div className="flex items-center gap-1 text-xs text-[var(--color-stone-dark)]">
               {profile.location && (
                 <>
-                  <MapPin size={11} className="text-[var(--color-arrow-orange)]" />
+                  <MapPin size={11} className="text-[var(--color-arrow-orange-text)]" />
                   <span className="truncate">{profile.location}</span>
                 </>
               )}
@@ -201,7 +201,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
           <button
             type="button"
             onClick={() => onUnmatch(matchItem.id, profile.name)}
-            className="flex-1 py-2 px-3 rounded-[var(--radius-input)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-stone-dark)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)] transition-colors flex items-center justify-center gap-1.5"
+            className="flex-1 py-2 px-3 rounded-[var(--radius-input)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-stone-dark)] hover:text-[var(--color-danger-text)] hover:bg-[var(--color-danger-subtle)] transition-colors flex items-center justify-center gap-1.5"
           >
             <UserX size={14} />
             <span>Unmatch</span>
@@ -213,7 +213,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               onReport(profile);
               onClose();
             }}
-            className="flex-1 py-2 px-3 rounded-[var(--radius-input)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-stone-dark)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)] transition-colors flex items-center justify-center gap-1.5"
+            className="flex-1 py-2 px-3 rounded-[var(--radius-input)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-stone-dark)] hover:text-[var(--color-danger-text)] hover:bg-[var(--color-danger-subtle)] transition-colors flex items-center justify-center gap-1.5"
           >
             <ShieldAlert size={14} />
             <span>Report &amp; block</span>

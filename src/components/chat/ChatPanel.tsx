@@ -173,7 +173,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ match, onMessageSent }) =>
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 px-4 py-2 bg-[var(--color-danger-subtle)] text-[var(--color-danger)] text-xs border-t border-[var(--color-border-subtle)]">
+        <div className="flex items-start gap-2 px-4 py-2 bg-[var(--color-danger-subtle)] text-[var(--color-danger-text)] text-xs border-t border-[var(--color-border-subtle)]">
           <ShieldAlert size={14} className="shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>

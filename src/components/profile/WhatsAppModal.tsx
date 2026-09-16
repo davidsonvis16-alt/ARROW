@@ -107,15 +107,15 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
           </div>
           <ul className="text-[11px] text-[var(--color-ink-soft)] space-y-1 leading-relaxed">
             <li className="flex items-start gap-1.5">
-              <span className="text-[var(--color-arrow-orange)] font-bold">→</span>
+              <span className="text-[var(--color-arrow-orange-text)] font-bold">→</span>
               <span>Your number is <strong>never displayed</strong> on Discover, public profiles, or search.</span>
             </li>
             <li className="flex items-start gap-1.5">
-              <span className="text-[var(--color-arrow-orange)] font-bold">→</span>
+              <span className="text-[var(--color-arrow-orange-text)] font-bold">→</span>
               <span>Connections only activate when both users like each other.</span>
             </li>
             <li className="flex items-start gap-1.5">
-              <span className="text-[var(--color-arrow-orange)] font-bold">→</span>
+              <span className="text-[var(--color-arrow-orange-text)] font-bold">→</span>
               <span>You can revoke permission or disable WhatsApp anytime.</span>
             </li>
           </ul>

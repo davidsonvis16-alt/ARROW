@@ -34,7 +34,7 @@ export const Badge: React.FC<BadgeProps> = ({
   } else {
     switch (variant) {
       case 'accent':
-        variantStyles = 'bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange)] border border-[var(--color-danger)]';
+        variantStyles = 'bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange-text)] border border-[var(--color-danger)]';
         break;
       case 'forest':
         variantStyles = 'bg-[var(--color-forest-subtle)] text-[var(--color-forest)] border border-[var(--color-border-subtle)]';

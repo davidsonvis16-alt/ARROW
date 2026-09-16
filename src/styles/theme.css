@@ -24,7 +24,7 @@
   /* Text */
   --color-ink: #111111;
   --color-ink-soft: #2e2c28;
-  --color-stone-dark: #7a766e;
+  --color-stone-dark: #6a665f;
 
   /* Lines and fills */
   --color-stone: #d9d6cf;
@@ -36,6 +36,10 @@
   --color-arrow-orange: #e85d2a;
   --color-arrow-orange-hover: #d05325;
   --color-arrow-orange-subtle: #fdf1eb;
+  /* The brand orange is a fill colour. As small text on a light surface it
+     measures 3.5:1, so text uses this darker variant instead. In dark mode the
+     two converge, because there the bright orange is already readable. */
+  --color-arrow-orange-text: #b4481b;
   --color-forest: #17352f;
   --color-forest-subtle: #eaf1ef;
 
@@ -48,6 +52,7 @@
   /* Status */
   --color-danger: #d9383a;
   --color-danger-subtle: #fdf0f0;
+  --color-danger-text: #b32426;
   --color-success: #1f7a52;
   --color-success-subtle: #e9f5ef;
   --color-warning: #a96a12;
@@ -98,6 +103,7 @@
     --color-arrow-orange: #f0693a;
     --color-arrow-orange-hover: #ff7d4f;
     --color-arrow-orange-subtle: #33211a;
+    --color-arrow-orange-text: #f0693a;
     --color-forest: #9fd3c3;
     --color-forest-subtle: #1b2a26;
 
@@ -106,6 +112,7 @@
 
     --color-danger: #f2696b;
     --color-danger-subtle: #331e1f;
+    --color-danger-text: #f2696b;
     --color-success: #6cc79a;
     --color-success-subtle: #17291f;
     --color-warning: #e0a458;
@@ -138,11 +145,13 @@
   --color-arrow-orange: #f0693a;
   --color-arrow-orange-hover: #ff7d4f;
   --color-arrow-orange-subtle: #33211a;
+  --color-arrow-orange-text: #f0693a;
   --color-forest: #9fd3c3;
   --color-forest-subtle: #1b2a26;
 
   --color-danger: #f2696b;
   --color-danger-subtle: #331e1f;
+  --color-danger-text: #f2696b;
   --color-success: #6cc79a;
   --color-success-subtle: #17291f;
   --color-warning: #e0a458;

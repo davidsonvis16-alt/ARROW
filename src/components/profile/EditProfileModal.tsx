@@ -233,7 +233,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               <button
                 type="button"
                 onClick={addPrompt}
-                className="text-xs font-bold text-[var(--color-arrow-orange)] flex items-center gap-1 hover:underline"
+                className="text-xs font-bold text-[var(--color-arrow-orange-text)] flex items-center gap-1 hover:underline"
               >
                 <Plus size={13} />
                 <span>Add Prompt</span>
@@ -266,7 +266,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   <button
                     type="button"
                     onClick={() => removePrompt(idx)}
-                    className="p-1 text-[var(--color-stone-dark)] hover:text-[var(--color-danger)] transition-colors"
+                    className="p-1 text-[var(--color-stone-dark)] hover:text-[var(--color-danger-text)] transition-colors"
                   >
                     <Trash2 size={13} />
                   </button>

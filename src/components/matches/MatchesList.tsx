@@ -92,7 +92,7 @@ export const MatchesList: React.FC<MatchesListProps> = ({
         <p className="text-xs text-[var(--color-stone-dark)] font-medium">
           {matches.length} mutual {matches.length === 1 ? 'match' : 'matches'}
           {matches.some((m) => m.unreadCount > 0) && (
-            <span className="text-[var(--color-arrow-orange)] font-bold">
+            <span className="text-[var(--color-arrow-orange-text)] font-bold">
               {' '}
               · {matches.filter((m) => m.unreadCount > 0).length} unread
             </span>
@@ -132,7 +132,7 @@ export const MatchesList: React.FC<MatchesListProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline justify-between gap-2">
                   <h3
-                    className={`text-base truncate transition-colors group-hover:text-[var(--color-arrow-orange)] ${
+                    className={`text-base truncate transition-colors group-hover:text-[var(--color-arrow-orange-text)] ${
                       unread ? 'font-black text-[var(--color-ink)]' : 'font-bold text-[var(--color-ink)]'
                     }`}
                   >
@@ -161,7 +161,7 @@ export const MatchesList: React.FC<MatchesListProps> = ({
                   <div className="flex items-center gap-1 text-xs text-[var(--color-stone-dark)] mt-0.5 truncate">
                     {profile.location ? (
                       <>
-                        <MapPin size={12} className="text-[var(--color-arrow-orange)] shrink-0" />
+                        <MapPin size={12} className="text-[var(--color-arrow-orange-text)] shrink-0" />
                         <span className="truncate">{profile.location}</span>
                       </>
                     ) : (

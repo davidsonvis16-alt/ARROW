@@ -39,7 +39,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             icon = <CheckCircle2 size={16} className="text-[var(--color-forest)] shrink-0" />;
             borderStyle = 'border-[var(--color-border-subtle)] bg-[var(--color-forest-subtle)]';
           } else if (t.type === 'error' || t.type === 'warning') {
-            icon = <AlertCircle size={16} className="text-[var(--color-arrow-orange)] shrink-0" />;
+            icon = <AlertCircle size={16} className="text-[var(--color-arrow-orange-text)] shrink-0" />;
             borderStyle = 'border-[var(--color-danger)] bg-[var(--color-arrow-orange-subtle)]';
           }
 

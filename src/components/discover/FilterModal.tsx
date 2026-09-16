@@ -119,7 +119,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs font-bold text-[var(--color-ink)]">
             <span>Age Range</span>
-            <span className="text-[var(--color-arrow-orange)] font-extrabold">
+            <span className="text-[var(--color-arrow-orange-text)] font-extrabold">
               {ageMin} – {ageMax >= 65 ? '65+' : ageMax}
             </span>
           </div>

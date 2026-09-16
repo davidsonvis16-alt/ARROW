@@ -32,8 +32,10 @@ import { ReportModal } from './components/safety/ReportModal';
 import { LegalModal, LegalDocType } from './components/safety/LegalModal';
 import { OnboardingFlow } from './components/onboarding/OnboardingFlow';
 import { AuthModal } from './components/auth/AuthModal';
+import { NewPasswordModal } from './components/auth/NewPasswordModal';
 import { ToastProvider, useToast } from './components/ui/Toast';
 import { Button } from './components/ui/Button';
+import { Avatar } from './components/ui/Avatar';
 import {
   ArrowRight,
   RefreshCw,
@@ -53,6 +55,7 @@ function ArrowApp() {
   const [currentTab, setCurrentTab] = useState<TabType>('discover');
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isNewPasswordOpen, setIsNewPasswordOpen] = useState(false);
 
   // Discover State
   const [discoverProfiles, setDiscoverProfiles] = useState<UserProfile[]>([]);
@@ -150,6 +153,10 @@ function ArrowApp() {
           // refresh, so nothing extra is fetched here.
           setPrevUserId(profile.id);
         }
+      } else if (event === 'PASSWORD_RECOVERY') {
+        // The reset link already signed this person in, so the only thing left
+        // is choosing the new password.
+        if (mounted) setIsNewPasswordOpen(true);
       } else if (event === 'SIGNED_OUT') {
         if (mounted) {
           setPrevUserId(currentUser?.id || null);
@@ -603,16 +610,12 @@ function ArrowApp() {
               onClick={() => setCurrentTab('profile')}
               className="flex items-center gap-3 p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
             >
-              <div className="w-10 h-10 rounded-xl overflow-hidden bg-stone-700 shrink-0 border border-white/10">
-                <img
-                  src={
-                    currentUser.photos[0]
-                  }
-                  alt={currentUser.name}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
+              <Avatar
+                name={currentUser.name}
+                src={currentUser.photos[0]}
+                size="sm"
+                className="w-10 h-10 border-white/10"
+              />
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-white truncate">{currentUser.name}</p>
                 <p className="text-[10px] text-white/50 truncate">{currentUser.location}</p>
@@ -622,7 +625,7 @@ function ArrowApp() {
             <button
               type="button"
               onClick={() => setIsAuthModalOpen(true)}
-              className="w-full flex items-center justify-center gap-2 p-3 rounded-2xl bg-[var(--color-arrow-orange)] hover:bg-[#d44f1f] text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
+              className="w-full flex items-center justify-center gap-2 p-3 rounded-2xl bg-[var(--color-arrow-orange)] hover:bg-[var(--color-arrow-orange-hover)] text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
             >
               <User size={15} />
               <span>Log In / Profile</span>
@@ -710,7 +713,7 @@ function ArrowApp() {
               ) : (
                 /* Authentic Clean State when no more profiles exist in feed */
                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 min-h-[60vh]">
-                  <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-arrow-orange)] shadow-xs">
+                  <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-arrow-orange-text)] shadow-xs">
                     <ArrowRight size={28} strokeWidth={2} />
                   </div>
                   <div className="space-y-1.5 max-w-xs">
@@ -828,7 +831,7 @@ function ArrowApp() {
             <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--color-ink)]/50">
               Activity & Matches
             </h3>
-            <span className="text-[11px] font-bold text-[var(--color-arrow-orange)]">
+            <span className="text-[11px] font-bold text-[var(--color-arrow-orange-text)]">
               {matches.length + incomingLikes.length} Total
             </span>
           </div>
@@ -841,16 +844,13 @@ function ArrowApp() {
                   onClick={() => setSelectedMatch(m)}
                   className="flex items-center gap-3 p-2 rounded-2xl hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer border border-transparent hover:border-[var(--color-border)]"
                 >
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 ring-2 ring-[var(--color-arrow-orange)] ring-offset-2">
-                    <img
-                      src={
-                        m.partnerProfile.photos[0]
-                      }
-                      alt={m.partnerProfile.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
+                  <Avatar
+                    name={m.partnerProfile.name}
+                    src={m.partnerProfile.photos[0]}
+                    size="sm"
+                    rounded="full"
+                    className="w-12 h-12 ring-2 ring-[var(--color-arrow-orange)] ring-offset-2"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between">
                       <p className="text-xs font-bold text-[var(--color-ink)] truncate">{m.partnerProfile.name}</p>
@@ -869,20 +869,17 @@ function ArrowApp() {
                   }}
                   className="flex items-center gap-3 p-2 rounded-2xl hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
                 >
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 border border-[var(--color-border)]">
-                    <img
-                      src={
-                        l.profile.photos[0]
-                      }
-                      alt={l.profile.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
+                  <Avatar
+                    name={l.profile.name}
+                    src={l.profile.photos[0]}
+                    size="sm"
+                    rounded="full"
+                    className="w-12 h-12"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between">
                       <p className="text-xs font-bold text-[var(--color-ink)] truncate">{l.profile.name}</p>
-                      <span className="text-[10px] font-bold text-[var(--color-arrow-orange)] uppercase">Liked You</span>
+                      <span className="text-[10px] font-bold text-[var(--color-arrow-orange-text)] uppercase">Liked You</span>
                     </div>
                     <p className="text-[11px] text-[var(--color-stone-dark)] truncate">{l.profile.lookingFor || 'Seeking Connection'}</p>
                   </div>
@@ -912,7 +909,7 @@ function ArrowApp() {
 
             <div className="p-5 bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] shadow-xs space-y-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-50 rounded-2xl flex items-center justify-center text-[#25D366] border border-green-100">
+                <div className="w-10 h-10 bg-[var(--color-forest-subtle)] rounded-2xl flex items-center justify-center text-[#25D366] border border-[var(--color-border-subtle)]">
                   <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
                     <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
                   </svg>
@@ -1144,6 +1141,11 @@ function ArrowApp() {
           onToggleOnlineStatus={handleToggleOnlineStatus}
         />
       )}
+
+      <NewPasswordModal
+        isOpen={isNewPasswordOpen}
+        onClose={() => setIsNewPasswordOpen(false)}
+      />
 
       {/* Report & Block User Modal */}
       <ReportModal

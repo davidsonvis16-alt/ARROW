@@ -624,7 +624,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 <div className="space-y-2">
                   <span
                     className={`text-[11px] font-bold ${
-                      isEligibleAdult ? 'text-[var(--color-forest)]' : 'text-[var(--color-danger)]'
+                      isEligibleAdult ? 'text-[var(--color-forest)]' : 'text-[var(--color-danger-text)]'
                     }`}
                   >
                     {calculatedAge} yrs {isEligibleAdult ? '✓ (18+)' : '✗ (Must be 18+)'}
@@ -646,7 +646,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               )}
 
               {verificationError && (
-                <p className="text-xs text-[var(--color-danger)] font-medium">{verificationError}</p>
+                <p className="text-xs text-[var(--color-danger-text)] font-medium">{verificationError}</p>
               )}
 
               <Button

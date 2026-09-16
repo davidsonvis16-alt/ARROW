@@ -100,7 +100,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClose();
               onOpenEditProfile();
             }}
-            className="text-xs font-bold text-[var(--color-arrow-orange)] hover:underline"
+            className="text-xs font-bold text-[var(--color-arrow-orange-text)] hover:underline"
           >
             Edit
           </button>
@@ -221,7 +221,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   >
                     <span>{p.name} ({p.age}, {p.location})</span>
                     {p.id === currentUser.id && (
-                      <span className="text-[10px] text-[var(--color-arrow-orange)] font-bold">Active</span>
+                      <span className="text-[10px] text-[var(--color-arrow-orange-text)] font-bold">Active</span>
                     )}
                   </button>
                 ))}
@@ -254,7 +254,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className="w-full p-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-subtle)] rounded-xl transition-colors"
           >
             <div className="flex items-center gap-3">
-              <Shield size={16} className="text-[var(--color-arrow-orange)]" />
+              <Shield size={16} className="text-[var(--color-arrow-orange-text)]" />
               <span className="text-xs font-bold text-[var(--color-ink)]">Safety Guidelines</span>
             </div>
             <span className="text-xs font-bold text-[var(--color-stone-dark)]">→</span>
@@ -309,14 +309,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
-              className="w-full py-2.5 text-xs font-bold text-[var(--color-danger)] hover:bg-[var(--color-danger-subtle)] rounded-xl transition-colors flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 text-xs font-bold text-[var(--color-danger-text)] hover:bg-[var(--color-danger-subtle)] rounded-xl transition-colors flex items-center justify-center gap-1.5"
             >
               <Trash2 size={14} />
               <span>Delete Account Permanently</span>
             </button>
           ) : (
             <div className="p-4 bg-[var(--color-danger-subtle)] rounded-2xl border border-[var(--color-danger)] space-y-3 animate-in fade-in duration-200">
-              <div className="flex items-start gap-2 text-xs font-bold text-[var(--color-danger)]">
+              <div className="flex items-start gap-2 text-xs font-bold text-[var(--color-danger-text)]">
                 <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                 <span>Confirm Permanent Deletion</span>
               </div>

@@ -39,7 +39,7 @@ export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
       <div className="text-center py-2 space-y-5">
         {/* Directional Header */}
         <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange)] text-xs font-bold uppercase tracking-wider">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange-text)] text-xs font-bold uppercase tracking-wider">
             <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-arrow-orange)]" />
             <span>Mutual Direction</span>
           </div>
@@ -61,7 +61,7 @@ export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
           />
 
           <div className="flex flex-col items-center">
-            <span className="text-[var(--color-arrow-orange)] font-black text-2xl animate-pulse">
+            <span className="text-[var(--color-arrow-orange-text)] font-black text-2xl animate-pulse">
               →
             </span>
           </div>

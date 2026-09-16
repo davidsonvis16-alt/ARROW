@@ -110,7 +110,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Log In or Create Profile"
               aria-label="Log In"
             >
-              <User size={15} className="text-[var(--color-arrow-orange)]" />
+              <User size={15} className="text-[var(--color-arrow-orange-text)]" />
               <span>Log In</span>
             </button>
           )

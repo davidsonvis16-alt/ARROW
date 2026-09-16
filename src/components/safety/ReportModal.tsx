@@ -86,7 +86,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
       <form onSubmit={handleSubmit} className="space-y-5 pb-3">
         {/* Notice */}
         <div className="p-3.5 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] flex items-start gap-2.5 text-xs text-[var(--color-ink-soft)]">
-          <ShieldAlert size={16} className="text-[var(--color-arrow-orange)] shrink-0 mt-0.5" />
+          <ShieldAlert size={16} className="text-[var(--color-arrow-orange-text)] shrink-0 mt-0.5" />
           <p className="leading-relaxed">
             Reports are kept strictly anonymous. Submitting this report will also automatically block {reportedUser.name} from interacting with you.
           </p>

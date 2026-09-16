@@ -87,7 +87,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
             <button
               type="button"
               onClick={onReport}
-              className="text-xs font-semibold text-[var(--color-danger)] hover:underline flex items-center gap-1"
+              className="text-xs font-semibold text-[var(--color-danger-text)] hover:underline flex items-center gap-1"
             >
               <ShieldAlert size={14} />
               <span>Report or Block</span>
@@ -95,7 +95,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-[var(--color-stone-dark)] font-medium mt-1">
-            <MapPin size={14} className="text-[var(--color-arrow-orange)]" />
+            <MapPin size={14} className="text-[var(--color-arrow-orange-text)]" />
             <span>{profile.location}</span>
             <span className="mx-1">·</span>
             <span className="capitalize">{profile.gender}</span>

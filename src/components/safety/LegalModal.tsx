@@ -28,7 +28,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
   } else if (type === 'safety') {
     title = 'Safety Guidelines';
     subtitle = 'Protecting yourself and others on ARROW';
-    icon = <ShieldCheck size={18} className="text-[var(--color-arrow-orange)]" />;
+    icon = <ShieldCheck size={18} className="text-[var(--color-arrow-orange-text)]" />;
   }
 
   return (
