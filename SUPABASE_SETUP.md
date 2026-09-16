@@ -64,7 +64,7 @@ database — never production, as it writes fixtures:
 psql "$SCRATCH_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/security.sql
 ```
 
-It logs in as three separate users and asserts 38 properties, including that an
+It logs in as three separate users and asserts 37 properties, including that an
 attacker who knows a match id cannot read its messages or its phone number,
 that a user cannot set their own `is_verified_adult`, and that a blocked
 person disappears in both directions. Every assertion that represents an attack

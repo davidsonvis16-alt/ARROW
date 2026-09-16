@@ -508,3 +508,19 @@ END $$;
 
 \echo ''
 \echo 'All ARROW security tests passed.'
+
+-- ==============================================================================
+-- Fixture cleanup
+-- ------------------------------------------------------------------------------
+-- Removing the test users makes the suite repeatable against the same scratch
+-- database: every arrow_* row cascades from arrow_profiles, which cascades from
+-- auth.users.
+-- ==============================================================================
+DO $$
+BEGIN
+  DELETE FROM auth.users
+  WHERE email LIKE '%@example.test';
+END $$;
+
+DROP FUNCTION IF EXISTS public.arrow_test_login(UUID);
+DROP FUNCTION IF EXISTS public.arrow_test_assert(BOOLEAN, TEXT);

@@ -33,7 +33,7 @@ URL and publishable key in `.env.local`.
 | Path | Contains |
 | --- | --- |
 | `supabase/schema.sql` | Tables, policies and the entire client API as RPCs |
-| `supabase/tests/security.sql` | 38 assertions covering the authorization rules |
+| `supabase/tests/security.sql` | 37 assertions covering the authorization rules |
 | `src/services/` | Thin wrappers over those RPCs |
 | `src/styles/theme.css` | Design tokens for both themes |
 
