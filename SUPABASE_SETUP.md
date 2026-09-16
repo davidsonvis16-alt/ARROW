@@ -20,6 +20,21 @@ whom, and is not trusted to try.
    it again. The script is idempotent, so re-running it is always safe and is
    also how you upgrade an existing install.
 
+**Upgrading an existing install.** The script adapts to data written by earlier
+versions rather than demanding a clean database. Two notices are normal and not
+errors:
+
+- `removed outdated function ...` — an older version of a function whose
+  arguments have since changed. Left in place it would stay callable and
+  compete with the current one.
+- `check_... not validated` — a row predates a new length limit, so the rule
+  applies to every future write but the old row is left exactly as its owner
+  wrote it. Nothing is truncated.
+
+Photos written by older clients all share `display_order = 0`, because the old
+upload path defaulted it. They are renumbered per user, keeping their existing
+order. No photo is deleted and none is reordered relative to the others.
+
 **Coexistence.** Every object is prefixed `arrow_` and photos live in a
 dedicated `arrow-profile-photos` bucket, so a project that already holds
 unrelated tables is untouched.

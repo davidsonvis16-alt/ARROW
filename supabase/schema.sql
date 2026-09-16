@@ -101,21 +101,28 @@ ALTER TABLE public.arrow_profiles ADD COLUMN IF NOT EXISTS show_online_status BO
 ALTER TABLE public.arrow_profiles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
 
 -- Field-level sanity limits, enforced for every writer including RPCs.
+--
+-- These are added NOT VALID and validated in section 3.10. Adding a CHECK the
+-- normal way scans the existing table and aborts the whole script if one old
+-- row does not fit — a single 1200-character bio written before there was a
+-- limit would stop the install. NOT VALID applies the rule to every future
+-- insert and update immediately, which is what actually matters, and leaves
+-- the back-fill as a separate, reportable step.
 ALTER TABLE public.arrow_profiles DROP CONSTRAINT IF EXISTS check_arrow_adult_age;
 ALTER TABLE public.arrow_profiles ADD CONSTRAINT check_arrow_adult_age
-  CHECK (date_of_birth IS NULL OR date_part('year', age(date_of_birth)) >= 18);
+  CHECK (date_of_birth IS NULL OR date_part('year', age(date_of_birth)) >= 18) NOT VALID;
 
 ALTER TABLE public.arrow_profiles DROP CONSTRAINT IF EXISTS check_arrow_name_len;
 ALTER TABLE public.arrow_profiles ADD CONSTRAINT check_arrow_name_len
-  CHECK (char_length(name) BETWEEN 1 AND 60);
+  CHECK (char_length(name) BETWEEN 1 AND 60) NOT VALID;
 
 ALTER TABLE public.arrow_profiles DROP CONSTRAINT IF EXISTS check_arrow_bio_len;
 ALTER TABLE public.arrow_profiles ADD CONSTRAINT check_arrow_bio_len
-  CHECK (bio IS NULL OR char_length(bio) <= 1000);
+  CHECK (bio IS NULL OR char_length(bio) <= 1000) NOT VALID;
 
 ALTER TABLE public.arrow_profiles DROP CONSTRAINT IF EXISTS check_arrow_interests_len;
 ALTER TABLE public.arrow_profiles ADD CONSTRAINT check_arrow_interests_len
-  CHECK (interests IS NULL OR cardinality(interests) <= 20);
+  CHECK (interests IS NULL OR cardinality(interests) <= 20) NOT VALID;
 
 -- 3.2 AGE VERIFICATIONS — immutable audit trail of the 18+ gate.
 CREATE TABLE IF NOT EXISTS public.arrow_age_verifications (
@@ -150,6 +157,27 @@ ALTER TABLE public.arrow_profile_photos ADD CONSTRAINT check_arrow_photo_order_r
 ALTER TABLE public.arrow_profile_photos ADD COLUMN IF NOT EXISTS storage_path TEXT DEFAULT NULL;
 
 DROP INDEX IF EXISTS idx_arrow_photos_user_order;
+
+-- Existing installs hold several photos per user at display_order 0, because
+-- the old upload path passed a default of 0 for every photo. The unique index
+-- below cannot be built over that, so give each user's photos a distinct
+-- position first, keeping whatever order they are currently in. No photo is
+-- lost and none is reordered relative to the others.
+WITH ranked AS (
+  SELECT
+    id,
+    ROW_NUMBER() OVER (
+      PARTITION BY user_id
+      ORDER BY display_order ASC, created_at ASC, id ASC
+    ) - 1 AS new_order
+  FROM public.arrow_profile_photos
+)
+UPDATE public.arrow_profile_photos ph
+SET display_order = ranked.new_order
+FROM ranked
+WHERE ph.id = ranked.id
+  AND ph.display_order IS DISTINCT FROM ranked.new_order;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_arrow_photos_user_order
   ON public.arrow_profile_photos(user_id, display_order);
 
@@ -228,13 +256,65 @@ CREATE TABLE IF NOT EXISTS public.arrow_reports (
 
 ALTER TABLE public.arrow_reports DROP CONSTRAINT IF EXISTS check_arrow_report_details_len;
 ALTER TABLE public.arrow_reports ADD CONSTRAINT check_arrow_report_details_len
-  CHECK (details IS NULL OR char_length(details) <= 2000);
+  CHECK (details IS NULL OR char_length(details) <= 2000) NOT VALID;
 
--- One open report per reporter/target keeps the moderation queue clean and
--- stops report-spam being used to harass.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_arrow_reports_open_unique
-  ON public.arrow_reports(reporter_id, reported_id)
-  WHERE status = 'pending';
+-- A unique partial index would be the stronger way to keep one open report per
+-- reporter/target, but an existing install can already hold duplicates, and the
+-- only way to make such an index fit is to delete or relabel somebody's safety
+-- report. Neither is acceptable, so the rule is enforced in arrow_report_user
+-- instead and every existing record is kept as filed.
+DROP INDEX IF EXISTS idx_arrow_reports_open_unique;
+
+-- ==============================================================================
+-- 3.10 CONSTRAINT VALIDATION
+-- ------------------------------------------------------------------------------
+-- Try to validate each rule against the rows already in the table. A rule that
+-- validates is fully enforced. A rule that does not still governs every future
+-- write; it just means some existing row predates it, and the NOTICE says
+-- which so it can be tidied up separately.
+--
+-- The 18+ rule is the exception: it is a legal boundary rather than a tidiness
+-- one, so a row that fails it stops the install rather than being reported.
+-- ==============================================================================
+DO $$
+DECLARE
+  r RECORD;
+  v_stale INT;
+BEGIN
+  FOR r IN
+    SELECT unnest(ARRAY[
+      'public.arrow_profiles|check_arrow_name_len',
+      'public.arrow_profiles|check_arrow_bio_len',
+      'public.arrow_profiles|check_arrow_interests_len',
+      'public.arrow_reports|check_arrow_report_details_len'
+    ]) AS spec
+  LOOP
+    BEGIN
+      EXECUTE format(
+        'ALTER TABLE %s VALIDATE CONSTRAINT %I',
+        split_part(r.spec, '|', 1),
+        split_part(r.spec, '|', 2)
+      );
+    EXCEPTION WHEN check_violation THEN
+      RAISE NOTICE
+        'ARROW: % not validated — some existing rows predate it. New writes are still checked.',
+        split_part(r.spec, '|', 2);
+    END;
+  END LOOP;
+
+  SELECT COUNT(*) INTO v_stale
+  FROM public.arrow_profiles
+  WHERE date_of_birth IS NOT NULL
+    AND date_part('year', age(date_of_birth)) < 18;
+
+  IF v_stale > 0 THEN
+    RAISE EXCEPTION
+      'ARROW: % existing profile(s) have a date of birth under 18. Resolve these before installing.',
+      v_stale;
+  END IF;
+
+  ALTER TABLE public.arrow_profiles VALIDATE CONSTRAINT check_arrow_adult_age;
+END $$;
 
 -- ==============================================================================
 -- 4. INDEXES
@@ -1454,6 +1534,7 @@ AS $$
 DECLARE
   v_actor UUID := public.arrow_actor();
   v_recent INT;
+  v_open BOOLEAN;
 BEGIN
   IF p_target_id IS NULL OR p_target_id = v_actor THEN
     RAISE EXCEPTION 'You cannot report yourself' USING ERRCODE = '22023';
@@ -1471,14 +1552,26 @@ BEGIN
     RAISE EXCEPTION 'Too many reports today. Please contact support.' USING ERRCODE = '53400';
   END IF;
 
-  INSERT INTO public.arrow_reports (reporter_id, reported_id, reason, details)
-  VALUES (
-    v_actor,
-    p_target_id,
-    COALESCE(p_reason, 'other')::arrow_report_reason,
-    left(COALESCE(p_details, ''), 2000)
-  )
-  ON CONFLICT DO NOTHING;
+  -- One open report per pair. A second report about the same person while the
+  -- first is still pending adds nothing to the moderation queue, and filing
+  -- repeatedly is itself a way to harass. The caller is not told the
+  -- difference, so this cannot be used to probe what has been reported.
+  SELECT EXISTS (
+    SELECT 1 FROM public.arrow_reports
+    WHERE reporter_id = v_actor
+      AND reported_id = p_target_id
+      AND status = 'pending'
+  ) INTO v_open;
+
+  IF NOT v_open THEN
+    INSERT INTO public.arrow_reports (reporter_id, reported_id, reason, details)
+    VALUES (
+      v_actor,
+      p_target_id,
+      COALESCE(p_reason, 'other')::arrow_report_reason,
+      left(COALESCE(p_details, ''), 2000)
+    );
+  END IF;
 
   IF COALESCE(p_also_block, TRUE) THEN
     INSERT INTO public.arrow_blocks (blocker_id, blocked_id)
@@ -1941,6 +2034,88 @@ USING (
   bucket_id = 'arrow-profile-photos'
   AND (storage.foldername(name))[1] = auth.uid()::text
 );
+
+-- ==============================================================================
+-- 10.5 ORPHANED FUNCTION SWEEP
+-- ------------------------------------------------------------------------------
+-- CREATE OR REPLACE only replaces a function with the SAME signature. When an
+-- argument list changes between versions, the old function survives as a second
+-- overload — and the grant block below would hand it back to `authenticated`,
+-- because it grants by name.
+--
+-- That is not academic. The previous schema's
+-- arrow_get_discover_feed(int, int, text[], text) reads a view this file drops,
+-- so on an upgraded database it would sit there callable and broken, competing
+-- with the current seven-argument version for the same PostgREST call.
+--
+-- So: anything named arrow_* whose exact signature is not in this list is from
+-- an older version and is removed. Regenerate the list after adding or changing
+-- a function's arguments:
+--
+--   SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+--   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+--   WHERE n.nspname = 'public' AND p.proname LIKE 'arrow\_%' ORDER BY 1;
+-- ==============================================================================
+DO $$
+DECLARE
+  r RECORD;
+  v_current TEXT[] := ARRAY[
+    'arrow_actor()',
+    'arrow_add_photo(p_storage_path text, p_photo_url text)',
+    'arrow_block_user(p_target_id uuid)',
+    'arrow_can_view_profile(p_viewer uuid, p_target uuid)',
+    'arrow_can_view_profile_photo(p_profile_id uuid)',
+    'arrow_complete_age_verification(p_date_of_birth date)',
+    'arrow_delete_my_account()',
+    'arrow_delete_photo(p_storage_path text)',
+    'arrow_get_blocked_profiles()',
+    'arrow_get_discover_feed(p_age_min integer, p_age_max integer, p_genders text[], p_location text, p_interests text[], p_looking_for text[], p_limit integer)',
+    'arrow_get_like_quota()',
+    'arrow_get_match_whatsapp_contact(p_match_id uuid)',
+    'arrow_get_matches()',
+    'arrow_get_messages(p_match_id uuid, p_limit integer, p_before timestamp with time zone)',
+    'arrow_get_my_preferences()',
+    'arrow_get_my_profile()',
+    'arrow_get_profile(p_profile_id uuid)',
+    'arrow_get_received_likes()',
+    'arrow_get_sent_likes()',
+    'arrow_handle_block_cleanup()',
+    'arrow_handle_mutual_like_match()',
+    'arrow_is_blocked_pair(p_a uuid, p_b uuid)',
+    'arrow_is_matched(p_a uuid, p_b uuid)',
+    'arrow_like_profile(p_target_id uuid, p_is_super boolean)',
+    'arrow_limit(p_key text)',
+    'arrow_mark_messages_read(p_match_id uuid)',
+    'arrow_match_partner(p_actor uuid, p_match_id uuid)',
+    'arrow_pass_profile(p_target_id uuid)',
+    'arrow_reorder_photos(p_paths text[])',
+    'arrow_report_user(p_target_id uuid, p_reason text, p_details text, p_also_block boolean)',
+    'arrow_rewind_last_swipe()',
+    'arrow_safe_profile(p_profile_id uuid)',
+    'arrow_send_message(p_match_id uuid, p_body text)',
+    'arrow_set_my_preferences(p_age_min integer, p_age_max integer, p_gender_preference text[], p_location_preference text, p_max_distance_km integer, p_intentions text[])',
+    'arrow_set_visibility(p_is_paused boolean, p_show_online_status boolean)',
+    'arrow_set_whatsapp(p_allow boolean, p_number text)',
+    'arrow_touch_activity()',
+    'arrow_touch_updated_at()',
+    'arrow_unblock_user(p_target_id uuid)',
+    'arrow_unmatch(p_match_id uuid)',
+    'arrow_upsert_my_profile(p_name text, p_gender text, p_location text, p_bio text, p_interests text[], p_looking_for text, p_prompts jsonb)'
+  ];
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig,
+           p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS ident
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname LIKE 'arrow\_%'
+  LOOP
+    IF NOT (r.ident = ANY(v_current)) THEN
+      EXECUTE format('DROP FUNCTION IF EXISTS %s CASCADE', r.sig);
+      RAISE NOTICE 'ARROW: removed outdated function %', r.ident;
+    END IF;
+  END LOOP;
+END $$;
 
 -- ==============================================================================
 -- 11. FUNCTION PRIVILEGES
