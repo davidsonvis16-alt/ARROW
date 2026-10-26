@@ -114,7 +114,7 @@ ALTER TABLE public.arrow_profiles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPT
 
 -- Field-level sanity limits, enforced for every writer including RPCs.
 --
--- These are added NOT VALID and validated in section 3.10. Adding a CHECK the
+-- These are added NOT VALID and validated in section 3.9a. Adding a CHECK the
 -- normal way scans the existing table and aborts the whole script if one old
 -- row does not fit — a single 1200-character bio written before there was a
 -- limit would stop the install. NOT VALID applies the rule to every future
@@ -293,7 +293,7 @@ ALTER TABLE public.arrow_reports ADD CONSTRAINT check_arrow_report_details_len
 DROP INDEX IF EXISTS idx_arrow_reports_open_unique;
 
 -- ==============================================================================
--- 3.10 CONSTRAINT VALIDATION
+-- 3.9a CONSTRAINT VALIDATION
 -- ------------------------------------------------------------------------------
 -- Try to validate each rule against the rows already in the table. A rule that
 -- validates is fully enforced. A rule that does not still governs every future
@@ -2887,8 +2887,13 @@ USING (
 -- with the current seven-argument version for the same PostgREST call.
 --
 -- So: anything named arrow_* whose exact signature is not in this list is from
--- an older version and is removed. Regenerate the list after adding or changing
--- a function's arguments:
+-- an older version and is removed.
+--
+-- !! ADDING OR CHANGING A FUNCTION? ADD ITS SIGNATURE HERE, or this sweep will
+-- !! drop it on every install. `npm run test:db:local` catches a missing entry
+-- !! (the install check below counts the functions that survived).
+--
+-- Regenerate the list after adding or changing a function's arguments:
 --
 --   SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
 --   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -2900,18 +2905,23 @@ DECLARE
   v_current TEXT[] := ARRAY[
     'arrow_actor()',
     'arrow_add_photo(p_storage_path text, p_photo_url text)',
+    'arrow_apply_card_subscription(p_user_id uuid, p_plan text, p_status text, p_period_end timestamp with time zone, p_customer_code text, p_subscription_code text, p_email_token text)',
+    'arrow_billing_user(p_customer_code text, p_email text)',
     'arrow_block_user(p_target_id uuid)',
     'arrow_can_view_profile(p_viewer uuid, p_target uuid)',
     'arrow_can_view_profile_photo(p_profile_id uuid)',
     'arrow_complete_age_verification(p_date_of_birth date)',
     'arrow_delete_my_account()',
     'arrow_delete_photo(p_storage_path text)',
+    'arrow_effective_plan(p_user uuid)',
     'arrow_get_blocked_profiles()',
     'arrow_get_discover_feed(p_age_min integer, p_age_max integer, p_genders text[], p_location text, p_interests text[], p_looking_for text[], p_limit integer)',
     'arrow_get_like_quota()',
     'arrow_get_match_whatsapp_contact(p_match_id uuid)',
     'arrow_get_matches()',
     'arrow_get_messages(p_match_id uuid, p_limit integer, p_before timestamp with time zone)',
+    'arrow_get_my_payments()',
+    'arrow_get_my_plan()',
     'arrow_get_my_preferences()',
     'arrow_get_my_profile()',
     'arrow_get_profile(p_profile_id uuid)',
@@ -2919,21 +2929,31 @@ DECLARE
     'arrow_get_sent_likes()',
     'arrow_handle_block_cleanup()',
     'arrow_handle_mutual_like_match()',
+    'arrow_has_feature(p_user uuid, p_feature text)',
     'arrow_is_blocked_pair(p_a uuid, p_b uuid)',
+    'arrow_is_match_member(p_match_id uuid)',
     'arrow_is_matched(p_a uuid, p_b uuid)',
-    'arrow_like_profile(p_target_id uuid, p_is_super boolean)',
+    'arrow_is_unlimited(p_plan arrow_plan, p_key text)',
+    'arrow_like_profile(p_target_id uuid, p_is_super boolean, p_note text)',
     'arrow_limit(p_key text)',
     'arrow_mark_messages_read(p_match_id uuid)',
     'arrow_match_partner(p_actor uuid, p_match_id uuid)',
     'arrow_pass_profile(p_target_id uuid)',
+    'arrow_plan_has(p_plan arrow_plan, p_feature text)',
+    'arrow_plan_limit(p_plan arrow_plan, p_key text)',
+    'arrow_react_to_message(p_message_id uuid, p_reaction text)',
+    'arrow_record_payment(p_reference text, p_user_id uuid, p_plan text, p_method text, p_amount_minor bigint, p_currency text, p_customer_code text, p_pass_days integer)',
     'arrow_reorder_photos(p_paths text[])',
     'arrow_report_user(p_target_id uuid, p_reason text, p_details text, p_also_block boolean)',
     'arrow_rewind_last_swipe()',
     'arrow_safe_profile(p_profile_id uuid)',
     'arrow_send_message(p_match_id uuid, p_body text)',
+    'arrow_set_incognito(p_enabled boolean)',
     'arrow_set_my_preferences(p_age_min integer, p_age_max integer, p_gender_preference text[], p_location_preference text, p_max_distance_km integer, p_intentions text[])',
     'arrow_set_visibility(p_is_paused boolean, p_show_online_status boolean)',
     'arrow_set_whatsapp(p_allow boolean, p_number text)',
+    'arrow_start_boost()',
+    'arrow_start_trial()',
     'arrow_touch_activity()',
     'arrow_touch_updated_at()',
     'arrow_unblock_user(p_target_id uuid)',
@@ -3066,6 +3086,12 @@ BEGIN
 
   IF v_tables < 13 THEN
     RAISE EXCEPTION 'ARROW install incomplete: expected 13 tables, found %', v_tables;
+  END IF;
+
+  -- Must equal the number of signatures in the 10.5 sweep list. Fewer means
+  -- the sweep dropped a function that was missing from that list.
+  IF v_rpcs <> 56 THEN
+    RAISE EXCEPTION 'ARROW install inconsistent: expected 56 functions, found %. Update the 10.5 sweep list.', v_rpcs;
   END IF;
 
   IF v_unprotected IS NOT NULL THEN
