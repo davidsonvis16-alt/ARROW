@@ -1063,6 +1063,74 @@ BEGIN
   RESET ROLE;
 END $$;
 
+-- ==============================================================================
+-- 17. Unsending an arrow
+-- ==============================================================================
+\echo '17. Unsend arrow'
+
+DO $$
+DECLARE
+  rae UUID := 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+  sol UUID := 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+  v_json JSONB;
+  v_used_before INT;
+  v_failed BOOLEAN;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    (rae, 'rae@example.test', NOW()), (sol, 'sol@example.test', NOW())
+  ON CONFLICT (id) DO NOTHING;
+  INSERT INTO public.arrow_profiles (id, name, gender, location, date_of_birth, is_verified_adult, last_active_at)
+  VALUES (rae, 'Rae', 'woman', 'Nairobi', '1994-04-04', TRUE, NOW()),
+         (sol, 'Sol', 'man', 'Nairobi', '1993-05-05', TRUE, NOW())
+  ON CONFLICT (id) DO NOTHING;
+  -- Plus, so Sol can see who liked him.
+  PERFORM public.arrow_apply_card_subscription(sol, 'plus', 'active', NOW() + INTERVAL '30 days', 'CUS_sol', 'SUB_sol', 'tok_sol');
+
+  PERFORM public.arrow_test_login(rae);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_like_profile(sol);
+  v_used_before := (public.arrow_get_like_quota()->>'arrowsUsed')::INT;
+  RESET ROLE;
+
+  PERFORM public.arrow_test_login(sol);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_test_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(public.arrow_get_received_likes()->'entries') e
+            WHERE (e->'profile'->>'id')::UUID = rae),
+    'the arrow arrives before it is unsent');
+  RESET ROLE;
+
+  PERFORM public.arrow_test_login(rae);
+  SET LOCAL ROLE authenticated;
+  v_json := public.arrow_unsend_arrow(sol);
+  PERFORM public.arrow_test_assert((v_json->>'success')::BOOLEAN, 'an arrow can be unsent');
+  PERFORM public.arrow_test_assert((public.arrow_get_like_quota()->>'arrowsUsed')::INT = v_used_before,
+    'ATTACK BLOCKED: an unsent arrow still counts towards the daily limit');
+  RESET ROLE;
+
+  PERFORM public.arrow_test_login(sol);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_test_assert(
+    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(public.arrow_get_received_likes()->'entries') e
+                WHERE (e->'profile'->>'id')::UUID = rae),
+    'an unsent arrow disappears from their likes');
+  -- Sol likes Rae: no match, because Rae's arrow is gone.
+  PERFORM public.arrow_like_profile(rae);
+  PERFORM public.arrow_test_assert(
+    NOT EXISTS (SELECT 1 FROM public.arrow_matches WHERE user1_id = LEAST(rae, sol) AND user2_id = GREATEST(rae, sol)),
+    'an unsent arrow cannot complete a match');
+  RESET ROLE;
+
+  -- Once matched, unsend refuses.
+  PERFORM public.arrow_test_login(rae);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_like_profile(sol);
+  v_json := public.arrow_unsend_arrow(sol);
+  PERFORM public.arrow_test_assert((v_json->>'success')::BOOLEAN IS FALSE,
+    'an arrow that became a match cannot be unsent');
+  RESET ROLE;
+END $$;
+
 \echo ''
 \echo 'All ARROW security tests passed.'
 

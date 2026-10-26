@@ -12,6 +12,7 @@ interface HistoryListProps {
   onSendArrow: (profile: UserProfile) => void;
   onOpenChat: (profile: UserProfile) => void;
   onBringBackPasses: () => void;
+  onUnsend: (profile: UserProfile) => void;
   onGoToDiscover: () => void;
 }
 
@@ -41,6 +42,7 @@ export const HistoryList: React.FC<HistoryListProps> = ({
   onSendArrow,
   onOpenChat,
   onBringBackPasses,
+  onUnsend,
   onGoToDiscover,
 }) => {
   const [filter, setFilter] = useState<Filter>('all');
@@ -194,7 +196,15 @@ export const HistoryList: React.FC<HistoryListProps> = ({
                   Send arrow
                 </button>
               ) : (
-                <span className="shrink-0 text-[11px] font-bold text-[var(--color-stone-dark)] px-2">Waiting</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Take back your arrow to ${profile.name}? They won't be told.`)) onUnsend(profile);
+                  }}
+                  className="shrink-0 px-3.5 h-11 rounded-full border border-[var(--color-border)] text-xs font-bold text-[var(--color-ink)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger-text)] transition-colors"
+                >
+                  Unsend
+                </button>
               )}
             </li>
           );

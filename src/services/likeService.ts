@@ -104,6 +104,11 @@ export const likeService = {
     return entries.filter((e): e is HistoryEntry => e !== null);
   },
 
+  /** Take back an arrow you sent, before it becomes a match. */
+  async unsendArrow(targetId: string): Promise<{ success: boolean; error?: string }> {
+    return rpc<{ success: boolean; error?: string }>('arrow_unsend_arrow', { p_target_id: targetId });
+  },
+
   /** Bring back everyone you passed on. Arrows you sent are kept. */
   async clearPasses(): Promise<number> {
     const data = await rpc<{ restored: number }>('arrow_clear_passes');

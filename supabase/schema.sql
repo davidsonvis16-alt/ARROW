@@ -426,6 +426,13 @@ CREATE TABLE IF NOT EXISTS public.arrow_usage (
   CONSTRAINT check_arrow_usage_kind CHECK (kind IN ('rewind'))
 );
 
+-- Unsending an arrow deletes it, so the deletion is logged here to keep it
+-- counting towards the daily allowance (send, unsend, resend would otherwise
+-- get round the limit).
+ALTER TABLE public.arrow_usage DROP CONSTRAINT IF EXISTS check_arrow_usage_kind;
+ALTER TABLE public.arrow_usage ADD CONSTRAINT check_arrow_usage_kind
+  CHECK (kind IN ('rewind', 'unsend', 'unsend_super'));
+
 -- Incognito (Premium): only people you have sent an arrow to can see you.
 ALTER TABLE public.arrow_profiles ADD COLUMN IF NOT EXISTS is_incognito BOOLEAN NOT NULL DEFAULT FALSE;
 
@@ -734,6 +741,7 @@ REVOKE ALL ON FUNCTION public.arrow_match_partner(UUID, UUID) FROM PUBLIC, anon,
 REVOKE ALL ON FUNCTION public.arrow_safe_profile(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.arrow_effective_plan(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.arrow_has_feature(UUID, TEXT) FROM PUBLIC, anon, authenticated;
+-- arrow_recent_usage is created in section 6 and locked by the grant block in 11.
 
 -- Only this one is granted: RLS policies on storage.objects evaluate it as the
 -- calling user, so `authenticated` must be able to execute it.
@@ -779,6 +787,19 @@ AS $$
     WHEN 'weekly_boosts' THEN CASE p_plan WHEN 'premium' THEN 1 ELSE 0 END
     ELSE 0
   END;
+$$;
+
+-- How many times someone did a metered action in the last 24 hours.
+CREATE OR REPLACE FUNCTION public.arrow_recent_usage(p_user UUID, p_kind TEXT)
+RETURNS INT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT COUNT(*)::INT FROM public.arrow_usage
+  WHERE user_id = p_user AND kind = p_kind
+    AND created_at > NOW() - INTERVAL '24 hours';
 $$;
 
 -- Whether a plan-limited number should be shown to a person as "unlimited".
@@ -1248,6 +1269,12 @@ BEGIN
   WHERE user_id = v_actor AND kind = 'rewind'
     AND created_at > NOW() - INTERVAL '24 hours';
 
+  -- Unsent arrows still used up their place in today's allowance.
+  v_super  := v_super + public.arrow_recent_usage(v_actor, 'unsend_super');
+  v_arrows := v_arrows
+    + public.arrow_recent_usage(v_actor, 'unsend')
+    + public.arrow_recent_usage(v_actor, 'unsend_super');
+
   RETURN jsonb_build_object(
     'plan', v_plan,
     'arrowsUsed', v_arrows,
@@ -1312,6 +1339,7 @@ BEGIN
     SELECT COUNT(*) INTO v_used FROM public.arrow_likes
     WHERE from_user_id = v_actor AND is_pass = FALSE AND is_super = TRUE
       AND created_at > NOW() - INTERVAL '24 hours';
+    v_used := v_used + public.arrow_recent_usage(v_actor, 'unsend_super');
     v_limit := public.arrow_plan_limit(v_plan, 'daily_super');
     IF v_used >= v_limit THEN
       RAISE EXCEPTION 'You have used all % super arrows for today', v_limit USING ERRCODE = '53400';
@@ -1321,6 +1349,9 @@ BEGIN
   SELECT COUNT(*) INTO v_used FROM public.arrow_likes
   WHERE from_user_id = v_actor AND is_pass = FALSE
     AND created_at > NOW() - INTERVAL '24 hours';
+  v_used := v_used
+    + public.arrow_recent_usage(v_actor, 'unsend')
+    + public.arrow_recent_usage(v_actor, 'unsend_super');
   v_limit := public.arrow_plan_limit(v_plan, 'daily_arrows');
 
   IF v_used >= v_limit THEN
@@ -1435,6 +1466,39 @@ BEGIN
     'wasPass', v_last.is_pass,
     'profile', public.arrow_safe_profile(v_last.to_user_id)
   );
+END;
+$$;
+
+-- 7.11a Unsend an arrow: take back one you sent, before it becomes a match.
+-- It disappears from their likes, and they are never told. After a match
+-- this refuses — that is an unmatch, which also ends the conversation.
+CREATE OR REPLACE FUNCTION public.arrow_unsend_arrow(p_target_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_like RECORD;
+BEGIN
+  SELECT id, is_super INTO v_like
+  FROM public.arrow_likes
+  WHERE from_user_id = v_actor AND to_user_id = p_target_id AND is_pass = FALSE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', FALSE, 'error', 'There is no arrow to take back');
+  END IF;
+
+  IF public.arrow_is_matched(v_actor, p_target_id) THEN
+    RETURN jsonb_build_object('success', FALSE, 'error', 'You have already matched — unmatch from Chats instead');
+  END IF;
+
+  DELETE FROM public.arrow_likes WHERE id = v_like.id;
+  INSERT INTO public.arrow_usage (user_id, kind)
+  VALUES (v_actor, CASE WHEN v_like.is_super THEN 'unsend_super' ELSE 'unsend' END);
+
+  RETURN jsonb_build_object('success', TRUE);
 END;
 $$;
 
@@ -3006,6 +3070,7 @@ DECLARE
     'arrow_plan_limit(p_plan arrow_plan, p_key text)',
     'arrow_react_to_message(p_message_id uuid, p_reaction text)',
     'arrow_record_payment(p_reference text, p_user_id uuid, p_plan text, p_method text, p_amount_minor bigint, p_currency text, p_customer_code text, p_pass_days integer)',
+    'arrow_recent_usage(p_user uuid, p_kind text)',
     'arrow_reorder_photos(p_paths text[])',
     'arrow_report_user(p_target_id uuid, p_reason text, p_details text, p_also_block boolean)',
     'arrow_rewind_last_swipe()',
@@ -3021,6 +3086,7 @@ DECLARE
     'arrow_touch_updated_at()',
     'arrow_unblock_user(p_target_id uuid)',
     'arrow_unmatch(p_match_id uuid)',
+    'arrow_unsend_arrow(p_target_id uuid)',
     'arrow_upsert_my_profile(p_name text, p_gender text, p_location text, p_bio text, p_interests text[], p_looking_for text, p_prompts jsonb)'
   ];
 BEGIN
@@ -3089,6 +3155,7 @@ DECLARE
     'arrow_get_my_payments',
     'arrow_clear_passes',
     'arrow_get_swipe_history',
+    'arrow_unsend_arrow',
     -- Evaluated inside the photo and storage RLS policies as the caller.
     'arrow_can_view_profile_photo',
     -- Evaluated inside the Realtime channel policies as the caller.
@@ -3155,8 +3222,8 @@ BEGIN
 
   -- Must equal the number of signatures in the 10.5 sweep list. Fewer means
   -- the sweep dropped a function that was missing from that list.
-  IF v_rpcs <> 58 THEN
-    RAISE EXCEPTION 'ARROW install inconsistent: expected 58 functions, found %. Update the 10.5 sweep list.', v_rpcs;
+  IF v_rpcs <> 60 THEN
+    RAISE EXCEPTION 'ARROW install inconsistent: expected 60 functions, found %. Update the 10.5 sweep list.', v_rpcs;
   END IF;
 
   IF v_unprotected IS NOT NULL THEN

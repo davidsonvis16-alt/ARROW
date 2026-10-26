@@ -487,6 +487,24 @@ function ArrowApp() {
     }
   };
 
+  /** Take back an arrow that has not been answered yet. */
+  const handleUnsend = async (profile: UserProfile) => {
+    try {
+      const result = await api.unsendArrow(profile.id);
+      if (!result.success) {
+        showToast(result.error || 'Could not take that arrow back', 'info');
+        return;
+      }
+      showToast(`Arrow to ${profile.name} taken back`, 'info');
+      setDetailProfile(null);
+      await refreshInbox();
+      setHistory(await api.getHistory());
+      setQuota(await api.getLikeQuota());
+    } catch (err: any) {
+      showToast(err.message || 'Could not take that arrow back', 'error');
+    }
+  };
+
   /** Bring back everyone you passed on, straight into the deck. */
   const handleClearPasses = async () => {
     try {
@@ -1195,6 +1213,7 @@ function ArrowApp() {
                   else setCurrentTab('matches');
                 }}
                 onBringBackPasses={handleClearPasses}
+                onUnsend={handleUnsend}
                 onGoToDiscover={() => setCurrentTab('discover')}
               />
             </section>
@@ -1412,6 +1431,14 @@ function ArrowApp() {
           if (detailProfile) {
             setReportTarget(detailProfile);
           }
+        }}
+        arrowSent={Boolean(
+          detailProfile &&
+            (sentLikes.some((l) => l.profile.id === detailProfile.id) ||
+              history.some((h) => h.profile.id === detailProfile.id && h.action !== 'pass' && !h.isMatch))
+        )}
+        onUnsend={() => {
+          if (detailProfile) handleUnsend(detailProfile);
         }}
       />
 

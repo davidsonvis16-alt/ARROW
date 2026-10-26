@@ -125,6 +125,13 @@ export const api = {
     return [];
   },
 
+  async unsendArrow(targetId: string): Promise<{ success: boolean; error?: string }> {
+    if (isSupabaseConfigured) {
+      return likeService.unsendArrow(targetId);
+    }
+    return { success: false, error: 'Unsending needs a connected account.' };
+  },
+
   async clearPasses(): Promise<number> {
     if (isSupabaseConfigured) {
       return likeService.clearPasses();

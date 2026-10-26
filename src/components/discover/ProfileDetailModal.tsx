@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { UserProfile } from '../../types';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';
-import { MapPin, ShieldAlert, ArrowLeft, ArrowRight } from 'lucide-react';
+import { MapPin, ShieldAlert, ArrowLeft, ArrowRight, Undo2 } from 'lucide-react';
 
 interface ProfileDetailModalProps {
   profile: UserProfile | null;
@@ -11,6 +11,9 @@ interface ProfileDetailModalProps {
   onLike: () => void;
   onPass: () => void;
   onReport: () => void;
+  /** You already sent this person an arrow that they have not answered. */
+  arrowSent?: boolean;
+  onUnsend?: () => void;
 }
 
 export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
@@ -20,6 +23,8 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
   onLike,
   onPass,
   onReport,
+  arrowSent = false,
+  onUnsend,
 }) => {
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
 
@@ -170,6 +175,26 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
         )}
 
         {/* Bottom Actions Sticky in Modal */}
+        {arrowSent ? (
+          <div className="pt-4 space-y-2.5 border-t border-[var(--color-border-subtle)]">
+            <p className="text-center text-xs font-semibold text-[var(--color-stone-dark)]">
+              You sent {profile.name} an arrow · waiting for theirs
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Take back your arrow to ${profile.name}? They won't be told.`)) {
+                  onUnsend?.();
+                  onClose();
+                }
+              }}
+              className="w-full py-3 px-4 rounded-xl border-2 border-[var(--color-border)] text-[var(--color-ink)] font-bold text-sm flex items-center justify-center gap-1.5 hover:border-[var(--color-danger)] hover:text-[var(--color-danger-text)] transition-colors"
+            >
+              <Undo2 size={16} strokeWidth={2.5} />
+              <span>Unsend arrow</span>
+            </button>
+          </div>
+        ) : (
         <div className="pt-4 flex items-center gap-3 border-t border-[var(--color-border-subtle)]">
           <button
             type="button"
@@ -194,6 +219,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
             <ArrowRight size={16} strokeWidth={2.5} />
           </button>
         </div>
+        )}
       </div>
     </Modal>
   );
