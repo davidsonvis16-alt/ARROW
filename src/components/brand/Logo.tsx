@@ -66,6 +66,9 @@ export const Logo: React.FC<LogoProps> = ({ size = 'md', inverted = false, class
   );
 };
 
+/** Eden's portfolio — where the "Created by Eden" credit leads. */
+export const EDEN_URL = 'https://portfolio-e-mu.vercel.app/';
+
 /** The maker's credit. Shown in the rail, the profile tab, legal pages and onboarding. */
 export const CreatedByEden: React.FC<{ className?: string; inverted?: boolean }> = ({
   className = '',
@@ -76,6 +79,16 @@ export const CreatedByEden: React.FC<{ className?: string; inverted?: boolean }>
       inverted ? 'text-white/45' : 'text-[var(--color-stone-dark)]'
     } ${className}`}
   >
-    Created by <span className={`font-bold ${inverted ? 'text-white/80' : 'text-[var(--color-ink)]'}`}>Eden</span>
+    Created by{' '}
+    <a
+      href={EDEN_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`font-bold underline-offset-2 hover:underline ${
+        inverted ? 'text-white/80 hover:text-white' : 'text-[var(--color-ink)] hover:text-[var(--color-arrow-orange-text)]'
+      }`}
+    >
+      Eden
+    </a>
   </p>
 );
