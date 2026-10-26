@@ -11,6 +11,7 @@ import {
   DatingPreferences,
   PlanInfo,
   PaymentMethod,
+  HistoryEntry,
 } from './types';
 import { FREE_PLAN } from './services/billingService';
 import { isUpgradeError } from './services/rpc';
@@ -29,6 +30,7 @@ import { MatchCelebrationModal } from './components/discover/MatchCelebrationMod
 import { FilterModal } from './components/discover/FilterModal';
 import { LikesList } from './components/likes/LikesList';
 import { MatchesList } from './components/matches/MatchesList';
+import { HistoryList } from './components/history/HistoryList';
 import { MatchDetailModal } from './components/matches/MatchDetailModal';
 import { ProfileView } from './components/profile/ProfileView';
 import { EditProfileModal } from './components/profile/EditProfileModal';
@@ -77,6 +79,8 @@ function ArrowApp() {
   const [incomingLikes, setIncomingLikes] = useState<LikeEntry[]>([]);
   // Arrows you sent that have not been answered yet.
   const [sentLikes, setSentLikes] = useState<LikeEntry[]>([]);
+  // Everyone you have swiped on, for the History tab.
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   // Likes the server counted but, on the free plan, did not identify.
   const [hiddenLikes, setHiddenLikes] = useState(0);
   const [matches, setMatches] = useState<MatchWithProfile[]>([]);
@@ -239,6 +243,7 @@ function ArrowApp() {
       setDiscoverProfiles([]);
       setIncomingLikes([]);
       setSentLikes([]);
+      setHistory([]);
       setHiddenLikes(0);
       setMatches([]);
       setQuota(null);
@@ -249,14 +254,16 @@ function ArrowApp() {
 
     setIsLoadingDiscover(true);
     try {
-      const [feed, likesData, matchesData, quotaData, plan, sent] = await Promise.all([
+      const [feed, likesData, matchesData, quotaData, plan, sent, past] = await Promise.all([
         api.getDiscoverProfiles(filters),
         api.getLikes(),
         api.getMatches(),
         api.getLikeQuota(),
         currentUser ? api.getMyPlan() : Promise.resolve(FREE_PLAN),
         api.getSentLikes(),
+        api.getHistory(),
       ]);
+      setHistory(past);
       setDiscoverProfiles(feed);
       setCardIndex(0);
       setIncomingLikes(likesData.entries);
@@ -275,6 +282,14 @@ function ArrowApp() {
   useEffect(() => {
     refreshAppData();
   }, [refreshAppData]);
+
+  // Swiping does not trigger a full refresh, so History reloads each time it
+  // is opened to include the swipes made since.
+  useEffect(() => {
+    if (currentTab === 'history' && currentUser) {
+      api.getHistory().then(setHistory);
+    }
+  }, [currentTab, currentUser]);
 
   /** Matches and likes only, without reshuffling the discovery deck. */
   const refreshInbox = useCallback(async () => {
@@ -832,6 +847,23 @@ function ArrowApp() {
 
           <button
             type="button"
+            onClick={() => setCurrentTab('history')}
+            className={`w-full flex items-center gap-4 text-sm font-bold tracking-widest uppercase transition-all text-left cursor-pointer group ${
+              currentTab === 'history'
+                ? 'text-white'
+                : 'text-white/50 hover:text-white'
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full transition-all ${
+                currentTab === 'history' ? 'bg-[var(--color-arrow-orange)]' : 'bg-transparent'
+              }`}
+            />
+            <span>History</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setCurrentTab('profile')}
             className={`w-full flex items-center gap-4 text-sm font-bold tracking-widest uppercase transition-all text-left cursor-pointer group ${
               currentTab === 'profile'
@@ -972,7 +1004,10 @@ function ArrowApp() {
         />
 
         {/* Tab View Container */}
-        <div className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+        <div
+          key={currentTab}
+          className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0"
+        >
           {/* DISCOVER TAB */}
           {currentTab === 'discover' && (
             <section aria-label="Discover Section" className="flex-1 flex flex-col justify-center items-center p-4 md:p-8">
@@ -1140,6 +1175,26 @@ function ArrowApp() {
                 isGuest={!currentUser}
                 onOpenAuth={() => setIsAuthModalOpen(true)}
                 onSelectMatch={(match) => setSelectedMatch(match)}
+                onGoToDiscover={() => setCurrentTab('discover')}
+              />
+            </section>
+          )}
+
+          {/* HISTORY TAB */}
+          {currentTab === 'history' && (
+            <section aria-label="History Section" className="max-w-2xl w-full mx-auto p-4 md:p-6">
+              <HistoryList
+                entries={history}
+                isGuest={!currentUser}
+                onOpenAuth={() => setIsAuthModalOpen(true)}
+                onViewProfile={(profile) => setDetailProfile(profile)}
+                onSendArrow={handleLikeBackFromLikes}
+                onOpenChat={(profile) => {
+                  const match = matches.find((m) => m.partnerProfile.id === profile.id);
+                  if (match) setSelectedMatch(match);
+                  else setCurrentTab('matches');
+                }}
+                onBringBackPasses={handleClearPasses}
                 onGoToDiscover={() => setCurrentTab('discover')}
               />
             </section>

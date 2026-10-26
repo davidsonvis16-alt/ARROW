@@ -223,7 +223,15 @@ export interface ReportRecord {
   status: 'pending' | 'reviewed' | 'dismissed' | 'banned';
 }
 
-export type TabType = 'discover' | 'likes' | 'matches' | 'profile';
+export type TabType = 'discover' | 'likes' | 'matches' | 'history' | 'profile';
+
+/** Someone you swiped on, newest first. */
+export interface HistoryEntry {
+  profile: UserProfile;
+  action: 'pass' | 'arrow' | 'super';
+  isMatch: boolean;
+  at: string;
+}
 
 export interface FilterState {
   ageMin: number;

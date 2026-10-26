@@ -3,6 +3,7 @@ import {
   ChatMessage,
   DatingPreferences,
   FilterState,
+  HistoryEntry,
   LikeEntry,
   LikeQuota,
   LikeResult,
@@ -113,6 +114,13 @@ export const api = {
   async getSentLikes(): Promise<LikeEntry[]> {
     if (isSupabaseConfigured) {
       return likeService.getSentLikes();
+    }
+    return [];
+  },
+
+  async getHistory(): Promise<HistoryEntry[]> {
+    if (isSupabaseConfigured) {
+      return likeService.getHistory();
     }
     return [];
   },

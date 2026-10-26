@@ -1,6 +1,6 @@
 import { rpc, rpcSafe } from './rpc';
 import { hydrateProfile } from './profileService';
-import { LikeEntry, LikeQuota, LikeResult, LikesInbox, UserProfile } from '../types';
+import { HistoryEntry, LikeEntry, LikeQuota, LikeResult, LikesInbox, UserProfile } from '../types';
 
 interface RawLikeEntry {
   profile: unknown;
@@ -86,6 +86,22 @@ export const likeService = {
 
   async getSentLikes(): Promise<LikeEntry[]> {
     return hydrateEntries(await rpcSafe<RawLikeEntry[]>('arrow_get_sent_likes', {}, []));
+  },
+
+  /** Everyone you passed on or sent an arrow to, newest first. */
+  async getHistory(): Promise<HistoryEntry[]> {
+    const raw = await rpcSafe<Array<{ profile: unknown; action: HistoryEntry['action']; isMatch: boolean; at: string }>>(
+      'arrow_get_swipe_history',
+      {},
+      []
+    );
+    const entries = await Promise.all(
+      raw.map(async (item): Promise<HistoryEntry | null> => {
+        const profile = await hydrateProfile(item.profile);
+        return profile ? { profile, action: item.action, isMatch: Boolean(item.isMatch), at: item.at } : null;
+      })
+    );
+    return entries.filter((e): e is HistoryEntry => e !== null);
   },
 
   /** Bring back everyone you passed on. Arrows you sent are kept. */

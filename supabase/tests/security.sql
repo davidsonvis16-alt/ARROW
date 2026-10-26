@@ -1034,6 +1034,33 @@ BEGIN
     EXISTS (SELECT 1 FROM public.arrow_likes WHERE from_user_id = mallory AND to_user_id = quin AND NOT is_pass),
     'clearing passes keeps the arrows you sent');
   RESET ROLE;
+
+  -- History lists who you swiped on, and only you.
+  PERFORM public.arrow_test_login(mallory);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_pass_profile(pia);
+  v_json := public.arrow_get_swipe_history();
+  PERFORM public.arrow_test_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE (e->'profile'->>'id')::UUID = pia AND e->>'action' = 'pass')
+    AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE (e->'profile'->>'id')::UUID = quin AND e->>'action' = 'arrow'),
+    'history lists people you passed on and people you sent arrows to');
+  PERFORM public.arrow_test_assert(
+    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE e->'profile' ? 'whatsappNumber' OR e->'profile' ? 'dateOfBirth'),
+    'ATTACK BLOCKED: history never carries a phone number or date of birth');
+  RESET ROLE;
+
+  -- Pia blocks Mallory: she disappears from his history.
+  PERFORM public.arrow_test_login(pia);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_block_user(mallory);
+  RESET ROLE;
+  PERFORM public.arrow_test_login(mallory);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_test_assert(
+    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(public.arrow_get_swipe_history()) e
+                WHERE (e->'profile'->>'id')::UUID = pia),
+    'someone who blocked you vanishes from your history');
+  RESET ROLE;
 END $$;
 
 \echo ''

@@ -1458,6 +1458,39 @@ BEGIN
 END;
 $$;
 
+-- 7.12b Your swipe history: everyone you have passed on or sent an arrow to,
+-- newest first, so nobody you have seen is lost for good. Each person is
+-- still subject to the visibility rule — someone who blocked you, was banned,
+-- paused their profile or went incognito drops out of your history too.
+CREATE OR REPLACE FUNCTION public.arrow_get_swipe_history()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+BEGIN
+  RETURN COALESCE((
+    SELECT jsonb_agg(
+             jsonb_build_object(
+               'profile', public.arrow_safe_profile(h.to_user_id),
+               'action', CASE WHEN h.is_pass THEN 'pass' WHEN h.is_super THEN 'super' ELSE 'arrow' END,
+               'isMatch', public.arrow_is_matched(v_actor, h.to_user_id),
+               'at', h.created_at
+             ) ORDER BY h.created_at DESC)
+    FROM (
+      SELECT l.to_user_id, l.is_pass, l.is_super, l.created_at
+      FROM public.arrow_likes l
+      WHERE l.from_user_id = v_actor
+        AND public.arrow_can_view_profile(v_actor, l.to_user_id)
+      ORDER BY l.created_at DESC
+      LIMIT 100
+    ) h
+  ), '[]'::jsonb);
+END;
+$$;
+
 -- 7.13 Arrows you received, super arrows and newest first. Each entry carries
 -- the sender's safe profile, so the likes screen needs no per-row lookup.
 --
@@ -2956,6 +2989,7 @@ DECLARE
     'arrow_get_profile(p_profile_id uuid)',
     'arrow_get_received_likes()',
     'arrow_get_sent_likes()',
+    'arrow_get_swipe_history()',
     'arrow_handle_block_cleanup()',
     'arrow_handle_mutual_like_match()',
     'arrow_has_feature(p_user uuid, p_feature text)',
@@ -3054,6 +3088,7 @@ DECLARE
     'arrow_set_incognito',
     'arrow_get_my_payments',
     'arrow_clear_passes',
+    'arrow_get_swipe_history',
     -- Evaluated inside the photo and storage RLS policies as the caller.
     'arrow_can_view_profile_photo',
     -- Evaluated inside the Realtime channel policies as the caller.
@@ -3120,8 +3155,8 @@ BEGIN
 
   -- Must equal the number of signatures in the 10.5 sweep list. Fewer means
   -- the sweep dropped a function that was missing from that list.
-  IF v_rpcs <> 57 THEN
-    RAISE EXCEPTION 'ARROW install inconsistent: expected 57 functions, found %. Update the 10.5 sweep list.', v_rpcs;
+  IF v_rpcs <> 58 THEN
+    RAISE EXCEPTION 'ARROW install inconsistent: expected 58 functions, found %. Update the 10.5 sweep list.', v_rpcs;
   END IF;
 
   IF v_unprotected IS NOT NULL THEN
