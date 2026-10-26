@@ -88,6 +88,12 @@ export const likeService = {
     return hydrateEntries(await rpcSafe<RawLikeEntry[]>('arrow_get_sent_likes', {}, []));
   },
 
+  /** Bring back everyone you passed on. Arrows you sent are kept. */
+  async clearPasses(): Promise<number> {
+    const data = await rpc<{ restored: number }>('arrow_clear_passes');
+    return Number(data?.restored || 0);
+  },
+
   async getQuota(): Promise<LikeQuota | null> {
     return rpcSafe<LikeQuota | null>('arrow_get_like_quota', {}, null);
   },

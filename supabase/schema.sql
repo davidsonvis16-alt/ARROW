@@ -758,6 +758,7 @@ AS $$
     WHEN 'max_photos'        THEN 6
     WHEN 'trial_days'        THEN 7     -- one free Plus trial per account
     WHEN 'boost_minutes'     THEN 30
+    WHEN 'pass_cooldown_days' THEN 7    -- a pass hides someone this long, not forever
     ELSE 0
   END;
 $$;
@@ -1157,9 +1158,16 @@ BEGIN
       AND (v_location IS NULL OR p.location ILIKE '%' || v_location || '%')
       AND (v_interests IS NULL OR p.interests && v_interests)
       AND (v_looking_for IS NULL OR p.looking_for = ANY(v_looking_for))
+      -- Someone you sent an arrow to stays out of the deck (they are in your
+      -- sent list). Someone you passed on comes back after the cooldown: on a
+      -- young or small community a permanent pass empties the deck for good.
       AND NOT EXISTS (
         SELECT 1 FROM public.arrow_likes l
         WHERE l.from_user_id = v_actor AND l.to_user_id = p.id
+          AND (
+            l.is_pass = FALSE
+            OR l.created_at > NOW() - make_interval(days => public.arrow_limit('pass_cooldown_days'))
+          )
       )
       AND NOT public.arrow_is_blocked_pair(v_actor, p.id)
   ),
@@ -1427,6 +1435,26 @@ BEGIN
     'wasPass', v_last.is_pass,
     'profile', public.arrow_safe_profile(v_last.to_user_id)
   );
+END;
+$$;
+
+-- 7.12a Bring back everyone you passed on, now rather than after the
+-- cooldown. Only your own passes are touched; arrows you sent are kept.
+CREATE OR REPLACE FUNCTION public.arrow_clear_passes()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_count INT;
+BEGIN
+  DELETE FROM public.arrow_likes
+  WHERE from_user_id = v_actor AND is_pass = TRUE;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN jsonb_build_object('restored', v_count);
 END;
 $$;
 
@@ -2910,6 +2938,7 @@ DECLARE
     'arrow_block_user(p_target_id uuid)',
     'arrow_can_view_profile(p_viewer uuid, p_target uuid)',
     'arrow_can_view_profile_photo(p_profile_id uuid)',
+    'arrow_clear_passes()',
     'arrow_complete_age_verification(p_date_of_birth date)',
     'arrow_delete_my_account()',
     'arrow_delete_photo(p_storage_path text)',
@@ -3024,6 +3053,7 @@ DECLARE
     'arrow_start_boost',
     'arrow_set_incognito',
     'arrow_get_my_payments',
+    'arrow_clear_passes',
     -- Evaluated inside the photo and storage RLS policies as the caller.
     'arrow_can_view_profile_photo',
     -- Evaluated inside the Realtime channel policies as the caller.
@@ -3090,8 +3120,8 @@ BEGIN
 
   -- Must equal the number of signatures in the 10.5 sweep list. Fewer means
   -- the sweep dropped a function that was missing from that list.
-  IF v_rpcs <> 56 THEN
-    RAISE EXCEPTION 'ARROW install inconsistent: expected 56 functions, found %. Update the 10.5 sweep list.', v_rpcs;
+  IF v_rpcs <> 57 THEN
+    RAISE EXCEPTION 'ARROW install inconsistent: expected 57 functions, found %. Update the 10.5 sweep list.', v_rpcs;
   END IF;
 
   IF v_unprotected IS NOT NULL THEN

@@ -53,6 +53,8 @@ import {
   Rocket,
   Zap,
   Crown,
+  RotateCcw,
+  Send,
 } from 'lucide-react';
 
 function ArrowApp() {
@@ -73,6 +75,8 @@ function ArrowApp() {
 
   // Likes & Matches State
   const [incomingLikes, setIncomingLikes] = useState<LikeEntry[]>([]);
+  // Arrows you sent that have not been answered yet.
+  const [sentLikes, setSentLikes] = useState<LikeEntry[]>([]);
   // Likes the server counted but, on the free plan, did not identify.
   const [hiddenLikes, setHiddenLikes] = useState(0);
   const [matches, setMatches] = useState<MatchWithProfile[]>([]);
@@ -234,6 +238,7 @@ function ArrowApp() {
     if (isSupabaseConfigured && !currentUser) {
       setDiscoverProfiles([]);
       setIncomingLikes([]);
+      setSentLikes([]);
       setHiddenLikes(0);
       setMatches([]);
       setQuota(null);
@@ -244,16 +249,18 @@ function ArrowApp() {
 
     setIsLoadingDiscover(true);
     try {
-      const [feed, likesData, matchesData, quotaData, plan] = await Promise.all([
+      const [feed, likesData, matchesData, quotaData, plan, sent] = await Promise.all([
         api.getDiscoverProfiles(filters),
         api.getLikes(),
         api.getMatches(),
         api.getLikeQuota(),
         currentUser ? api.getMyPlan() : Promise.resolve(FREE_PLAN),
+        api.getSentLikes(),
       ]);
       setDiscoverProfiles(feed);
       setCardIndex(0);
       setIncomingLikes(likesData.entries);
+      setSentLikes(sent);
       setHiddenLikes(likesData.hiddenCount);
       setMatches(matchesData);
       setQuota(quotaData);
@@ -271,8 +278,13 @@ function ArrowApp() {
 
   /** Matches and likes only, without reshuffling the discovery deck. */
   const refreshInbox = useCallback(async () => {
-    const [likesData, matchesData] = await Promise.all([api.getLikes(), api.getMatches()]);
+    const [likesData, matchesData, sent] = await Promise.all([
+      api.getLikes(),
+      api.getMatches(),
+      api.getSentLikes(),
+    ]);
     setIncomingLikes(likesData.entries);
+    setSentLikes(sent);
     setHiddenLikes(likesData.hiddenCount);
     setMatches(matchesData);
   }, []);
@@ -457,6 +469,22 @@ function ArrowApp() {
       } else {
         showToast(err.message || 'Could not undo that', 'error');
       }
+    }
+  };
+
+  /** Bring back everyone you passed on, straight into the deck. */
+  const handleClearPasses = async () => {
+    try {
+      const restored = await api.clearPasses();
+      await refreshAppData();
+      showToast(
+        restored > 0
+          ? `${restored} ${restored === 1 ? 'person is' : 'people are'} back in your deck`
+          : "You haven't passed on anyone — you've seen everyone for now",
+        'info'
+      );
+    } catch (err: any) {
+      showToast(err.message || 'Could not bring them back', 'error');
     }
   };
 
@@ -1019,7 +1047,7 @@ function ArrowApp() {
                     </h3>
                     <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed">
                       {currentUser
-                        ? "You've reviewed all available profiles matching your preferences."
+                        ? "You've seen everyone on ARROW for now. People you passed on come back after a week — or bring them back now. New people join all the time."
                         : "You're exploring ARROW in guest mode. Log in or create a profile to start sending Arrows and connecting."}
                     </p>
                   </div>
@@ -1040,9 +1068,28 @@ function ArrowApp() {
                         <Button
                           variant="primary"
                           fullWidth
+                          onClick={handleClearPasses}
+                          icon={<RotateCcw size={15} />}
+                        >
+                          See people you passed on
+                        </Button>
+
+                        {sentLikes.length > 0 && (
+                          <Button
+                            variant="outline"
+                            fullWidth
+                            onClick={() => setCurrentTab('likes')}
+                            icon={<Send size={15} />}
+                          >
+                            {`Waiting on ${sentLikes.length} ${sentLikes.length === 1 ? 'person' : 'people'} you sent arrows to`}
+                          </Button>
+                        )}
+
+                        <Button
+                          variant="ghost"
+                          fullWidth
                           onClick={() => setIsFilterOpen(true)}
                           icon={<SlidersHorizontal size={15} />}
-                          arrow="right"
                         >
                           Adjust Preferences
                         </Button>
@@ -1071,6 +1118,7 @@ function ArrowApp() {
             <section aria-label="Likes Section" className="max-w-2xl w-full mx-auto p-4 md:p-6">
               <LikesList
                 likes={incomingLikes}
+                sentLikes={sentLikes}
                 hiddenCount={hiddenLikes}
                 onUpgrade={() => openPlans('likes')}
                 isGuest={!currentUser}

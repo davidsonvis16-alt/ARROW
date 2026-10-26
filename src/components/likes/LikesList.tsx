@@ -7,6 +7,8 @@ import { LikeEntry } from '../../types';
 
 interface LikesListProps {
   likes: LikeEntry[];
+  /** Arrows you sent that have not been answered yet. */
+  sentLikes?: LikeEntry[];
   /** Likes the server counted but did not identify (free plan). */
   hiddenCount?: number;
   onUpgrade?: () => void;
@@ -21,6 +23,7 @@ interface LikesListProps {
 
 export const LikesList: React.FC<LikesListProps> = ({
   likes,
+  sentLikes = [],
   hiddenCount = 0,
   onUpgrade,
   isGuest = false,
@@ -100,8 +103,70 @@ export const LikesList: React.FC<LikesListProps> = ({
       </div>
     ) : null;
 
+  // People you sent an arrow to. They leave your Discover deck once you send
+  // one, so this is where they stay visible while you wait for an answer.
+  const sentSection =
+    sentLikes.length > 0 ? (
+      <section className="space-y-2.5">
+        <div>
+          <h3 className="text-base font-black text-[var(--color-ink)] tracking-tight">Waiting on them</h3>
+          <p className="text-xs text-[var(--color-stone-dark)]">
+            You sent {sentLikes.length === 1 ? 'an arrow' : 'arrows'} — if they send one back, it's a match.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+          {sentLikes.map(({ profile, isSuper }) => (
+            <button
+              key={profile.id}
+              type="button"
+              onClick={() => onViewProfile(profile)}
+              className="text-left group"
+            >
+              <div className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-[var(--color-stone-light)] border border-[var(--color-border-subtle)]">
+                {profile.photos[0] ? (
+                  <img src={profile.photos[0]} alt={profile.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-2xl font-black text-[var(--color-stone-dark)]">
+                    {profile.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                {isSuper && (
+                  <span className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full bg-[var(--color-forest)] text-[var(--color-offwhite)] flex items-center justify-center">
+                    <Star size={12} />
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-xs font-bold text-[var(--color-ink)] truncate">
+                {profile.name}
+                {profile.age ? `, ${profile.age}` : ''}
+              </p>
+            </button>
+          ))}
+        </div>
+      </section>
+    ) : null;
+
   if (likes.length === 0 && hiddenCount > 0) {
-    return <div className="space-y-4 pb-24">{lockedCard}</div>;
+    return (
+      <div className="space-y-6 pb-24">
+        {lockedCard}
+        {sentSection}
+      </div>
+    );
+  }
+
+  if (likes.length === 0 && sentLikes.length > 0) {
+    return (
+      <div className="space-y-6 pb-24">
+        <div>
+          <h2 className="text-xl font-black text-[var(--color-ink)] tracking-tight">Likes</h2>
+          <p className="text-xs text-[var(--color-stone-dark)]">
+            Nobody new has sent you an arrow yet. When they do, they appear here.
+          </p>
+        </div>
+        {sentSection}
+      </div>
+    );
   }
 
   if (likes.length === 0) {
@@ -271,7 +336,8 @@ export const LikesList: React.FC<LikesListProps> = ({
           );
         })}
       </div>
+
+      {sentSection}
     </div>
   );
 };
-

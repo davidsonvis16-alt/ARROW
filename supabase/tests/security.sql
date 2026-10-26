@@ -974,6 +974,68 @@ BEGIN
     'the webhook finds the account by customer code or sign-in email');
 END $$;
 
+-- ==============================================================================
+-- 16. Passed people come back; arrows sent do not
+-- ==============================================================================
+\echo '16. Pass cooldown'
+
+DO $$
+DECLARE
+  mallory UUID := '33333333-3333-3333-3333-333333333333';
+  pia UUID := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  quin UUID := 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  v_json JSONB;
+  in_feed BOOLEAN;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    (pia, 'pia@example.test', NOW()), (quin, 'quin@example.test', NOW())
+  ON CONFLICT (id) DO NOTHING;
+  -- Recently active, so they rank at the top of a deck that already holds
+  -- more than one page of earlier fixtures.
+  INSERT INTO public.arrow_profiles (id, name, gender, location, date_of_birth, is_verified_adult, last_active_at)
+  VALUES (pia, 'Pia', 'woman', 'Nairobi', '1996-02-02', TRUE, NOW()),
+         (quin, 'Quin', 'woman', 'Nairobi', '1996-03-03', TRUE, NOW())
+  ON CONFLICT (id) DO NOTHING;
+  -- Mallory's earlier arrow allowance is spent; let him swipe here.
+  DELETE FROM public.arrow_likes WHERE from_user_id = mallory;
+
+  PERFORM public.arrow_test_login(mallory);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_pass_profile(pia);
+  PERFORM public.arrow_like_profile(quin);
+
+  in_feed := EXISTS (SELECT 1 FROM jsonb_array_elements(public.arrow_get_discover_feed()) e WHERE (e->>'id')::UUID = pia);
+  PERFORM public.arrow_test_assert(NOT in_feed, 'a fresh pass hides the person');
+  RESET ROLE;
+
+  -- Eight days later.
+  UPDATE public.arrow_likes SET created_at = NOW() - INTERVAL '8 days'
+  WHERE from_user_id = mallory;
+
+  PERFORM public.arrow_test_login(mallory);
+  SET LOCAL ROLE authenticated;
+  v_json := public.arrow_get_discover_feed();
+  PERFORM public.arrow_test_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE (e->>'id')::UUID = pia),
+    'someone you passed on comes back after the cooldown');
+  PERFORM public.arrow_test_assert(
+    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE (e->>'id')::UUID = quin),
+    'someone you sent an arrow to does not come back into the deck');
+
+  -- Pass again, then bring everyone back at once.
+  PERFORM public.arrow_pass_profile(pia);
+  v_json := public.arrow_clear_passes();
+  PERFORM public.arrow_test_assert((v_json->>'restored')::INT = 1,
+    'clearing passes reports how many people came back');
+  PERFORM public.arrow_test_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(public.arrow_get_discover_feed()) e WHERE (e->>'id')::UUID = pia),
+    'clearing passes puts them straight back in the deck');
+  PERFORM public.arrow_test_assert(
+    EXISTS (SELECT 1 FROM public.arrow_likes WHERE from_user_id = mallory AND to_user_id = quin AND NOT is_pass),
+    'clearing passes keeps the arrows you sent');
+  RESET ROLE;
+END $$;
+
 \echo ''
 \echo 'All ARROW security tests passed.'
 

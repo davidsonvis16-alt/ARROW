@@ -117,6 +117,13 @@ export const api = {
     return [];
   },
 
+  async clearPasses(): Promise<number> {
+    if (isSupabaseConfigured) {
+      return likeService.clearPasses();
+    }
+    return 0;
+  },
+
   async getLikeQuota(): Promise<LikeQuota | null> {
     if (isSupabaseConfigured) {
       return likeService.getQuota();
