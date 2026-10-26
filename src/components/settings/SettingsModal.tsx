@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { UserProfile, BlockRecord } from '../../types';
+import { UserProfile, PlanInfo } from '../../types';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { PLANS } from '../../config/plans';
+import { CreatedByEden } from '../brand/Logo';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Avatar } from '../ui/Avatar';
@@ -19,7 +22,8 @@ import {
   LogOut,
   AlertTriangle,
   UserPlus,
-  Users,
+  Crown,
+  EyeOff,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -36,6 +40,10 @@ interface SettingsModalProps {
   onNewProfile: () => void;
   onTogglePause: (paused: boolean) => Promise<void>;
   onToggleOnlineStatus?: (show: boolean) => Promise<void>;
+  planInfo: PlanInfo;
+  onOpenPlans: () => void;
+  onManageBilling: () => Promise<void>;
+  onToggleIncognito: (enabled: boolean) => Promise<void>;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -52,6 +60,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onNewProfile,
   onTogglePause,
   onToggleOnlineStatus,
+  planInfo,
+  onOpenPlans,
+  onManageBilling,
+  onToggleIncognito,
 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showBlockedUsers, setShowBlockedUsers] = useState(false);
@@ -66,8 +78,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       await onDeleteAccount();
       showToast('Your account and data have been deleted permanently', 'info');
-    } catch (err) {
-      showToast('Failed to delete account', 'error');
+    } catch (err: any) {
+      // The server explains itself, e.g. "cancel your subscription first".
+      showToast(err?.message || 'Could not delete your account', 'error');
       setIsDeleting(false);
     }
   };
@@ -104,6 +117,77 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             Edit
           </button>
+        </div>
+
+        {/* Membership */}
+        <div className="p-4 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                  planInfo.plan === 'premium'
+                    ? 'bg-[var(--color-gold-subtle)] text-[var(--color-gold)]'
+                    : planInfo.plan === 'plus'
+                      ? 'bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange-text)]'
+                      : 'bg-[var(--color-stone-light)] text-[var(--color-ink)]'
+                }`}
+              >
+                <Crown size={16} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-[var(--color-ink)]">
+                  Membership · {PLANS[planInfo.plan].name}
+                  {planInfo.status === 'trialing' ? ' trial' : ''}
+                </p>
+                <p className="text-[10px] text-[var(--color-stone-dark)]">
+                  {planInfo.plan === 'free'
+                    ? 'See who likes you, unlimited arrows and more'
+                    : planInfo.currentPeriodEnd
+                      ? `${planInfo.renews ? 'Renews' : 'Ends'} ${new Date(planInfo.currentPeriodEnd).toLocaleDateString()}${
+                          planInfo.paymentMethod === 'mpesa' ? ' · M-Pesa' : planInfo.paymentMethod === 'card' ? ' · card' : ''
+                        } · receipts and cancelling`
+                      : 'Active'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenPlans();
+              }}
+              className="text-xs font-bold text-[var(--color-arrow-orange-text)] hover:underline shrink-0"
+            >
+              {planInfo.plan === 'free' ? 'See plans' : 'Manage'}
+            </button>
+          </div>
+
+          <label className="flex items-center justify-between gap-3 pt-3 border-t border-[var(--color-border-subtle)] cursor-pointer">
+            <span className="flex items-center gap-3">
+              <EyeOff size={16} className="text-[var(--color-ink)]" />
+              <span>
+                <span className="block text-xs font-bold text-[var(--color-ink)]">Incognito</span>
+                <span className="block text-[10px] text-[var(--color-stone-dark)]">
+                  {planInfo.features.incognito
+                    ? 'Only people you send an arrow to can see you'
+                    : 'Premium: only people you like can see you'}
+                </span>
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="w-5 h-5 accent-[var(--color-arrow-orange)]"
+              checked={Boolean(currentUser.isIncognito)}
+              onChange={(e) => {
+                if (!planInfo.features.incognito && e.target.checked) {
+                  onClose();
+                  onOpenPlans();
+                  return;
+                }
+                onToggleIncognito(e.target.checked);
+              }}
+            />
+          </label>
         </div>
 
         {/* Core Settings Menu */}
@@ -184,7 +268,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         )}
 
-        {/* Testing & Multi-Profile Switcher (For local evaluation) */}
+        {/* Several profiles only exist in the offline demo, where they all live
+            on this device. A real account is one person. */}
+        {!isSupabaseConfigured && (
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
@@ -242,6 +328,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
         </div>
+        )}
 
         {/* Legal & Safety Section */}
         <div className="space-y-1.5 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border-subtle)] p-2 divide-y divide-[var(--color-border-subtle)]">
@@ -345,6 +432,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
         </div>
+
+        <CreatedByEden className="text-center" />
       </div>
     </Modal>
   );

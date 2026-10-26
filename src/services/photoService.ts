@@ -75,6 +75,22 @@ export async function resolvePhotoUrls(refs: Array<string | null | undefined>): 
     .filter((url): url is string => Boolean(url));
 }
 
+/**
+ * Like resolvePhotoUrls, but keeps each displayable URL paired with the stored
+ * reference it came from, so the two lists cannot drift out of step when a
+ * photo fails to sign and is dropped.
+ */
+export async function resolvePhotoPairs(
+  refs: Array<string | null | undefined>
+): Promise<Array<{ ref: string; url: string }>> {
+  const values = refs.filter((r): r is string => Boolean(r));
+  await resolvePhotoUrls(values);
+
+  return values
+    .map((ref) => ({ ref, url: isStoragePath(ref) && supabase ? cached(ref) : ref }))
+    .filter((pair): pair is { ref: string; url: string } => Boolean(pair.url));
+}
+
 /** Upload to the caller's own folder, then register it through the RPC. */
 export function buildPhotoPath(userId: string, file: File | Blob): string {
   const name = (file as File).name || 'photo.jpg';

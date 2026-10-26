@@ -1,7 +1,8 @@
 import React from 'react';
 import { Avatar } from '../ui/Avatar';
-import { SlidersHorizontal, Shield, User, LogIn } from 'lucide-react';
-import { TabType, UserProfile } from '../../types';
+import { SlidersHorizontal, Shield, User, Crown, Zap } from 'lucide-react';
+import { PlanId, TabType, UserProfile } from '../../types';
+import { Logo } from '../brand/Logo';
 
 interface HeaderProps {
   currentTab: TabType;
@@ -10,6 +11,8 @@ interface HeaderProps {
   hasActiveFilters?: boolean;
   onOpenSafety?: () => void;
   onOpenAuth?: () => void;
+  plan?: PlanId;
+  onOpenPlans?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,6 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   hasActiveFilters = false,
   onOpenSafety,
   onOpenAuth,
+  plan = 'free',
+  onOpenPlans,
 }) => {
   const tabTitles: Record<TabType, string> = {
     discover: 'Discover',
@@ -28,17 +33,11 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 py-3.5 bg-[var(--color-offwhite)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
-      {/* Brand Wordmark with Diamond Arrow Badge */}
+    <header className="safe-top sticky top-0 z-30 bg-[var(--color-offwhite)]/90 backdrop-blur-md border-b border-[var(--color-border)]">
+      <div className="flex items-center justify-between px-4 md:px-8 py-3">
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-6 h-6 bg-[var(--color-arrow-orange)] flex items-center justify-center transform rotate-45 rounded-[3px] shadow-xs">
-            <div className="w-2 h-2 border-t-2 border-r-2 border-white transform -rotate-45 ml-[-1px] mt-[1px]" />
-          </div>
-          <span className="text-xl font-bold tracking-tighter uppercase font-mono text-[var(--color-ink)]">
-            ARROW
-          </span>
-        </div>
+        {/* The rail carries the logo on large screens. */}
+        <Logo size="sm" className="lg:hidden" />
 
         {currentTab !== 'discover' && (
           <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-[var(--color-stone-dark)] uppercase tracking-wider pl-3 border-l border-[var(--color-border)]">
@@ -49,6 +48,42 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Action Icons & Profile Login */}
       <div className="flex items-center gap-2 md:gap-3">
+        {onOpenPlans && (
+          !currentUser ? (
+            <button
+              type="button"
+              onClick={onOpenPlans}
+              className="inline-flex items-center gap-1 px-3 py-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-ink)] text-xs font-black hover:border-[var(--color-ink)] transition-colors"
+            >
+              <Zap size={13} className="text-[var(--color-arrow-orange-text)]" />
+              Plans
+            </button>
+          ) : plan === 'free' ? (
+            <button
+              type="button"
+              onClick={onOpenPlans}
+              className="inline-flex items-center gap-1 px-3 py-2 rounded-full bg-[var(--color-arrow-orange)] hover:bg-[var(--color-arrow-orange-hover)] text-white text-xs font-black active:scale-95 transition-all"
+            >
+              <Zap size={13} />
+              Upgrade
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenPlans}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                plan === 'premium'
+                  ? 'bg-[var(--color-gold-subtle)] text-[var(--color-gold)]'
+                  : 'bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange-text)]'
+              }`}
+              aria-label={`Your plan: ${plan}`}
+            >
+              <Crown size={12} />
+              {plan}
+            </button>
+          )
+        )}
+
         {currentTab === 'discover' && onOpenFilter && (
           <button
             type="button"
@@ -72,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenSafety}
-            className="p-2.5 rounded-full bg-[var(--color-surface)] text-[var(--color-ink)] border border-[var(--color-border)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+            className="hidden sm:flex p-2.5 rounded-full bg-[var(--color-surface)] text-[var(--color-ink)] border border-[var(--color-border)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
             title="Safety & Community Guidelines"
             aria-label="Safety center"
           >
@@ -115,6 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )
         )}
+      </div>
       </div>
     </header>
   );

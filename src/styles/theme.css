@@ -58,6 +58,13 @@
   --color-warning: #a96a12;
   --color-warning-subtle: #fdf4e6;
 
+  /* Membership. Plus wears the brand orange; Premium gets a deep gold so the
+     two tiers are distinguishable at a glance, and neither is mistaken for a
+     warning or success state. */
+  --color-gold: #9a6a0c;
+  --color-gold-fill: #c9921d;
+  --color-gold-subtle: #fbf3e2;
+
   /* Shape */
   --radius-card: 32px;
   --radius-card-sm: 20px;
@@ -118,6 +125,10 @@
     --color-warning: #e0a458;
     --color-warning-subtle: #2e2417;
 
+    --color-gold: #e8b955;
+    --color-gold-fill: #d9a43a;
+    --color-gold-subtle: #2b2314;
+
     --shadow-subtle: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
     --shadow-card: 0 20px 40px -10px rgba(0, 0, 0, 0.6),
       0 8px 16px -4px rgba(0, 0, 0, 0.4);
@@ -157,6 +168,10 @@
   --color-warning: #e0a458;
   --color-warning-subtle: #2e2417;
 
+  --color-gold: #e8b955;
+  --color-gold-fill: #d9a43a;
+  --color-gold-subtle: #2b2314;
+
   --color-rail: #0d0c0b;
   --color-rail-ink: #f4f1ec;
 
@@ -164,6 +179,12 @@
   --shadow-card: 0 20px 40px -10px rgba(0, 0, 0, 0.6),
     0 8px 16px -4px rgba(0, 0, 0, 0.4);
   --shadow-modal: 0 24px 48px -8px rgba(0, 0, 0, 0.7);
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
@@ -174,9 +195,21 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  min-height: 100vh;
+  min-height: 100dvh;
   touch-action: manipulation;
   overflow-x: hidden;
+  /* No grey flash on tap, and no rubber-band scroll of the whole app shell —
+     it should feel like an installed app, not a web page. */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+/* Phone notch and home-bar padding. Zero on desktops. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
 ::-webkit-scrollbar {

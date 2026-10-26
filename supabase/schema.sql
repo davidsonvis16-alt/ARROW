@@ -1,5 +1,5 @@
 -- ==============================================================================
--- ARROW DATING APPLICATION — SECURE SCHEMA (v2)
+-- ARROW DATING APPLICATION — SECURE SCHEMA (v3)
 -- ==============================================================================
 -- Run this whole file in the Supabase SQL Editor. It is:
 --   * FRESH-INSTALL SAFE — every object is created before it is referenced.
@@ -28,6 +28,10 @@
 -- 5. ABUSE CONTROLS IN THE DATABASE. Daily like quotas, message rate limits,
 --    message length caps and ban enforcement live here, not in the client,
 --    so they cannot be bypassed by calling the API directly.
+-- 6. PAID FEATURES ARE ENFORCED HERE TOO. What a plan unlocks is decided by
+--    arrow_effective_plan + arrow_plan_has on every call. Plans are written
+--    only by the Paystack webhook (service_role) or the one-time trial, so no
+--    client can grant itself Premium, and a lapsed plan reverts on its own.
 -- ==============================================================================
 
 -- ==============================================================================
@@ -66,6 +70,14 @@ ALTER TYPE arrow_report_reason ADD VALUE IF NOT EXISTS 'offline_behavior';
 
 DO $$ BEGIN
   CREATE TYPE arrow_report_status AS ENUM ('pending', 'reviewed', 'dismissed', 'banned');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+-- Membership tiers. Free is the whole core product; Plus and Premium add
+-- convenience and reach, never safety. Blocking, reporting, messaging a match
+-- and contact consent are identical on every tier.
+DO $$ BEGIN
+  CREATE TYPE arrow_plan AS ENUM ('free', 'plus', 'premium');
 EXCEPTION WHEN duplicate_object THEN null;
 END $$;
 
@@ -210,6 +222,14 @@ CREATE TABLE IF NOT EXISTS public.arrow_likes (
 -- A super arrow is a limited, higher-signal like that surfaces first.
 ALTER TABLE public.arrow_likes ADD COLUMN IF NOT EXISTS is_super BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- A short note may ride along with a super arrow (Plus and Premium). It is the
+-- only text a person can send before a match, so it is short, only allowed on
+-- a super arrow, and dropped if the arrow is withdrawn.
+ALTER TABLE public.arrow_likes ADD COLUMN IF NOT EXISTS note TEXT DEFAULT NULL;
+ALTER TABLE public.arrow_likes DROP CONSTRAINT IF EXISTS check_arrow_like_note;
+ALTER TABLE public.arrow_likes ADD CONSTRAINT check_arrow_like_note
+  CHECK (note IS NULL OR (is_super AND char_length(note) BETWEEN 1 AND 140));
+
 -- 3.6 MATCHES — exactly one row per pair, ordered so the pair is unique.
 CREATE TABLE IF NOT EXISTS public.arrow_matches (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -231,6 +251,13 @@ CREATE TABLE IF NOT EXISTS public.arrow_messages (
   read_at TIMESTAMPTZ DEFAULT NULL,
   CONSTRAINT check_arrow_message_len CHECK (char_length(body) BETWEEN 1 AND 2000)
 );
+
+-- One reaction per message, set by the recipient only. A fixed emoji set keeps
+-- this from becoming a second, unmoderated text channel.
+ALTER TABLE public.arrow_messages ADD COLUMN IF NOT EXISTS reaction TEXT DEFAULT NULL;
+ALTER TABLE public.arrow_messages DROP CONSTRAINT IF EXISTS check_arrow_message_reaction;
+ALTER TABLE public.arrow_messages ADD CONSTRAINT check_arrow_message_reaction
+  CHECK (reaction IS NULL OR reaction IN ('❤️', '😂', '😮', '😢', '👍', '🔥'));
 
 -- 3.8 BLOCKS
 CREATE TABLE IF NOT EXISTS public.arrow_blocks (
@@ -316,6 +343,92 @@ BEGIN
   ALTER TABLE public.arrow_profiles VALIDATE CONSTRAINT check_arrow_adult_age;
 END $$;
 
+-- 3.10 SUBSCRIPTIONS — one row per account, written ONLY by the server.
+-- Keyed to auth.users rather than arrow_profiles on purpose: deleting and
+-- recreating a profile must not hand out a second free trial, and a paid
+-- subscription must not silently vanish while the card keeps being charged.
+-- Clients get no table privileges at all; they read their plan through
+-- arrow_get_my_plan, and only the payment webhook (service_role) can change it.
+--
+-- `source` says how the current plan was obtained:
+--   trial — the one-time free trial
+--   card  — a Paystack card subscription that renews monthly
+--   mpesa — a prepaid 30-day pass bought with M-Pesa; never renews
+--   grant — given by an administrator
+CREATE TABLE IF NOT EXISTS public.arrow_subscriptions (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  plan arrow_plan NOT NULL DEFAULT 'free',
+  status TEXT NOT NULL DEFAULT 'inactive',
+  source TEXT NOT NULL DEFAULT 'none',
+  current_period_end TIMESTAMPTZ DEFAULT NULL,
+  cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+  trial_used_at TIMESTAMPTZ DEFAULT NULL,
+  billing_customer_id TEXT UNIQUE DEFAULT NULL,
+  billing_subscription_id TEXT UNIQUE DEFAULT NULL,
+  -- Paystack needs this token, alongside the subscription code, to cancel.
+  billing_email_token TEXT DEFAULT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT check_arrow_sub_status
+    CHECK (status IN ('inactive', 'trialing', 'active', 'past_due', 'canceled'))
+);
+
+-- Upgrade path from the short-lived Stripe draft of this table.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'arrow_subscriptions'
+               AND column_name = 'stripe_customer_id') THEN
+    ALTER TABLE public.arrow_subscriptions RENAME COLUMN stripe_customer_id TO billing_customer_id;
+    ALTER TABLE public.arrow_subscriptions RENAME COLUMN stripe_subscription_id TO billing_subscription_id;
+  END IF;
+END $$;
+ALTER TABLE public.arrow_subscriptions ADD COLUMN IF NOT EXISTS billing_email_token TEXT DEFAULT NULL;
+ALTER TABLE public.arrow_subscriptions DROP CONSTRAINT IF EXISTS check_arrow_sub_source;
+UPDATE public.arrow_subscriptions SET source = 'card' WHERE source = 'stripe';
+ALTER TABLE public.arrow_subscriptions ADD CONSTRAINT check_arrow_sub_source
+  CHECK (source IN ('none', 'trial', 'card', 'mpesa', 'grant'));
+
+-- 3.10a PAYMENTS — one row per successful payment, keyed by the provider's
+-- reference. It is the receipt list people see in the app, and it is what
+-- makes the webhook safe to retry: a reference that is already here has
+-- already been applied, so a duplicate delivery changes nothing.
+CREATE TABLE IF NOT EXISTS public.arrow_payments (
+  reference TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  plan arrow_plan NOT NULL,
+  method TEXT NOT NULL,
+  amount_minor BIGINT NOT NULL,
+  currency TEXT NOT NULL,
+  -- For an M-Pesa pass, the end of the time this payment bought.
+  covers_until TIMESTAMPTZ DEFAULT NULL,
+  paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT check_arrow_payment_method CHECK (method IN ('card', 'mpesa')),
+  CONSTRAINT check_arrow_payment_amount CHECK (amount_minor > 0)
+);
+
+-- 3.11 BOOSTS — a Premium profile put at the front of discovery for a while.
+CREATE TABLE IF NOT EXISTS public.arrow_boosts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.arrow_profiles(id) ON DELETE CASCADE,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ends_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT check_arrow_boost_window CHECK (ends_at > started_at)
+);
+
+-- 3.12 USAGE — an append-only log of metered actions whose own rows do not
+-- survive (a rewind deletes the like it undoes, so it cannot count itself).
+CREATE TABLE IF NOT EXISTS public.arrow_usage (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.arrow_profiles(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT check_arrow_usage_kind CHECK (kind IN ('rewind'))
+);
+
+-- Incognito (Premium): only people you have sent an arrow to can see you.
+ALTER TABLE public.arrow_profiles ADD COLUMN IF NOT EXISTS is_incognito BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- ==============================================================================
 -- 4. INDEXES
 -- ==============================================================================
@@ -335,6 +448,15 @@ CREATE INDEX IF NOT EXISTS idx_arrow_blocks_blocked ON public.arrow_blocks(block
 CREATE INDEX IF NOT EXISTS idx_arrow_reports_reporter ON public.arrow_reports(reporter_id);
 CREATE INDEX IF NOT EXISTS idx_arrow_reports_status ON public.arrow_reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_arrow_age_verifications_user_id ON public.arrow_age_verifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_arrow_boosts_active ON public.arrow_boosts(ends_at DESC, user_id);
+CREATE INDEX IF NOT EXISTS idx_arrow_boosts_user ON public.arrow_boosts(user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_arrow_usage_user ON public.arrow_usage(user_id, kind, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_arrow_payments_user ON public.arrow_payments(user_id, paid_at DESC);
+-- Discovery scans verified, live profiles by recency; this keeps that scan an
+-- index walk as the user base grows instead of a full table read.
+CREATE INDEX IF NOT EXISTS idx_arrow_profiles_feed
+  ON public.arrow_profiles(last_active_at DESC NULLS LAST)
+  WHERE is_verified_adult AND NOT is_banned AND NOT is_paused AND deleted_at IS NULL;
 
 -- ==============================================================================
 -- 5. AUTHORIZATION CORE
@@ -402,6 +524,52 @@ AS $$
   );
 $$;
 
+-- 5.3a The plan someone is entitled to RIGHT NOW. A lapsed, cancelled or
+-- expired subscription is simply free — there is no state in which a stale row
+-- keeps granting features, because expiry is checked on every read.
+CREATE OR REPLACE FUNCTION public.arrow_effective_plan(p_user UUID)
+RETURNS arrow_plan
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT COALESCE((
+    SELECT s.plan
+    FROM public.arrow_subscriptions s
+    WHERE s.user_id = p_user
+      AND s.status IN ('trialing', 'active', 'past_due')
+      AND (s.current_period_end IS NULL OR s.current_period_end > NOW())
+  ), 'free'::arrow_plan);
+$$;
+
+-- 5.3b Feature flags per plan. The single place that says what money buys.
+CREATE OR REPLACE FUNCTION public.arrow_plan_has(p_plan arrow_plan, p_feature TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE p_feature
+    WHEN 'see_likes'        THEN p_plan IN ('plus', 'premium')
+    WHEN 'advanced_filters' THEN p_plan IN ('plus', 'premium')
+    WHEN 'arrow_notes'      THEN p_plan IN ('plus', 'premium')
+    WHEN 'read_receipts'    THEN p_plan = 'premium'
+    WHEN 'incognito'        THEN p_plan = 'premium'
+    WHEN 'boost'            THEN p_plan = 'premium'
+    ELSE FALSE
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.arrow_has_feature(p_user UUID, p_feature TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.arrow_plan_has(public.arrow_effective_plan(p_user), p_feature);
+$$;
+
 -- 5.4 THE access rule for one user's data being visible to another.
 -- A profile is visible only when a relationship justifies it:
 --   * it is your own, or
@@ -427,7 +595,7 @@ BEGIN
     RETURN TRUE;
   END IF;
 
-  SELECT is_verified_adult, is_banned, is_paused, deleted_at
+  SELECT is_verified_adult, is_banned, is_paused, is_incognito, deleted_at
     INTO v_target
   FROM public.arrow_profiles
   WHERE id = p_target;
@@ -452,8 +620,31 @@ BEGIN
     RETURN TRUE;
   END IF;
 
+  -- Incognito only takes effect while the owner still holds Premium, so a
+  -- lapsed subscription cannot leave someone permanently half-hidden.
+  IF v_target.is_incognito AND public.arrow_has_feature(p_target, 'incognito') THEN
+    RETURN FALSE;
+  END IF;
+
   RETURN v_target.is_verified_adult AND NOT v_target.is_paused;
 END;
+$$;
+
+-- 5.4a Match membership for the caller, used by the Realtime channel policy.
+-- Takes no user id — it can only ever answer "am I in this match?" — which is
+-- why it is safe to grant to clients.
+CREATE OR REPLACE FUNCTION public.arrow_is_match_member(p_match_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT auth.uid() IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.arrow_matches m
+    WHERE m.id = p_match_id
+      AND (m.user1_id = auth.uid() OR m.user2_id = auth.uid())
+  );
 $$;
 
 -- 5.5 Photo visibility follows profile visibility exactly.
@@ -541,6 +732,8 @@ REVOKE ALL ON FUNCTION public.arrow_is_matched(UUID, UUID) FROM PUBLIC, anon, au
 REVOKE ALL ON FUNCTION public.arrow_can_view_profile(UUID, UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.arrow_match_partner(UUID, UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.arrow_safe_profile(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.arrow_effective_plan(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.arrow_has_feature(UUID, TEXT) FROM PUBLIC, anon, authenticated;
 
 -- Only this one is granted: RLS policies on storage.objects evaluate it as the
 -- calling user, so `authenticated` must be able to execute it.
@@ -559,14 +752,41 @@ LANGUAGE sql
 IMMUTABLE
 AS $$
   SELECT CASE p_key
-    WHEN 'daily_arrows'      THEN 60    -- likes per rolling day
-    WHEN 'daily_super'       THEN 3     -- super arrows per rolling day
     WHEN 'hourly_messages'   THEN 120   -- messages per rolling hour
     WHEN 'daily_reports'     THEN 10    -- reports per rolling day
     WHEN 'rewind_window_min' THEN 30    -- how far back a rewind may reach
     WHEN 'max_photos'        THEN 6
+    WHEN 'trial_days'        THEN 7     -- one free Plus trial per account
+    WHEN 'boost_minutes'     THEN 30
     ELSE 0
   END;
+$$;
+
+-- Limits that depend on the plan. Paid tiers are "unlimited" in the product,
+-- but never literally unbounded: the paid ceiling is an abuse cap well above
+-- anything a person swipes by hand, so a script on a paid account is still
+-- throttled.
+CREATE OR REPLACE FUNCTION public.arrow_plan_limit(p_plan arrow_plan, p_key TEXT)
+RETURNS INT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT CASE p_key
+    WHEN 'daily_arrows'  THEN CASE p_plan WHEN 'free' THEN 50 ELSE 500 END
+    WHEN 'daily_super'   THEN CASE p_plan WHEN 'free' THEN 1 WHEN 'plus' THEN 3 ELSE 5 END
+    WHEN 'daily_rewinds' THEN CASE p_plan WHEN 'free' THEN 1 ELSE 100 END
+    WHEN 'weekly_boosts' THEN CASE p_plan WHEN 'premium' THEN 1 ELSE 0 END
+    ELSE 0
+  END;
+$$;
+
+-- Whether a plan-limited number should be shown to a person as "unlimited".
+CREATE OR REPLACE FUNCTION public.arrow_is_unlimited(p_plan arrow_plan, p_key TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT p_plan <> 'free' AND p_key IN ('daily_arrows', 'daily_rewinds');
 $$;
 
 -- ==============================================================================
@@ -617,6 +837,8 @@ BEGIN
       'whatsappNumber', p.whatsapp_number,
       'showOnlineStatus', p.show_online_status,
       'isPaused', p.is_paused,
+      'isIncognito', p.is_incognito AND public.arrow_has_feature(v_actor, 'incognito'),
+      'plan', public.arrow_effective_plan(v_actor),
       'unreadCount', (
         SELECT COUNT(*) FROM public.arrow_messages msg
         JOIN public.arrow_matches m ON m.id = msg.match_id
@@ -884,6 +1106,8 @@ DECLARE
   v_genders TEXT[];
   v_location TEXT;
   v_limit INT := LEAST(GREATEST(COALESCE(p_limit, 30), 1), 50);
+  v_interests TEXT[];
+  v_looking_for TEXT[];
   v_result JSONB;
 BEGIN
   SELECT * INTO v_prefs FROM public.arrow_preferences WHERE user_id = v_actor;
@@ -894,22 +1118,33 @@ BEGIN
   v_genders  := NULLIF(COALESCE(p_genders, v_prefs.gender_preference), '{}');
   v_location := NULLIF(btrim(COALESCE(p_location, v_prefs.location_preference, '')), '');
 
-  SELECT COALESCE(jsonb_agg(profile ORDER BY ord), '[]'::jsonb)
-  INTO v_result
-  FROM (
+  -- Interest and intention filters are a paid feature. On the free plan they
+  -- are dropped here rather than in the UI, so a modified client gains nothing.
+  IF NOT public.arrow_has_feature(v_actor, 'advanced_filters') THEN
+    v_interests := NULL;
+    v_looking_for := NULL;
+  ELSE
+    v_interests := NULLIF(p_interests, '{}');
+    v_looking_for := NULLIF(p_looking_for, '{}');
+  END IF;
+
+  -- The ordering is applied BEFORE the limit. Sorting only the rows that
+  -- survived an unordered LIMIT would drop people who already liked you as
+  -- soon as there were more candidates than one page.
+  WITH candidates AS (
     SELECT
-      public.arrow_safe_profile(p.id) AS profile,
-      ROW_NUMBER() OVER (
-        ORDER BY
-          -- People who already sent you an arrow come first: they are the
-          -- likeliest match and the best use of a swipe.
-          (EXISTS (
-            SELECT 1 FROM public.arrow_likes l
-            WHERE l.from_user_id = p.id AND l.to_user_id = v_actor AND l.is_pass = FALSE
-          )) DESC,
-          p.last_active_at DESC NULLS LAST,
-          p.created_at DESC
-      ) AS ord
+      p.id,
+      p.last_active_at,
+      p.created_at,
+      EXISTS (
+        SELECT 1 FROM public.arrow_likes l
+        WHERE l.from_user_id = p.id AND l.to_user_id = v_actor AND l.is_pass = FALSE
+      ) AS liked_me,
+      EXISTS (
+        SELECT 1 FROM public.arrow_boosts b
+        WHERE b.user_id = p.id AND b.ends_at > NOW()
+      ) AS boosted,
+      p.is_incognito AND public.arrow_has_feature(p.id, 'incognito') AS hidden
     FROM public.arrow_profiles p
     WHERE p.id <> v_actor
       AND p.is_verified_adult = TRUE
@@ -920,15 +1155,35 @@ BEGIN
       AND date_part('year', age(p.date_of_birth))::int BETWEEN v_age_min AND v_age_max
       AND (v_genders IS NULL OR p.gender::TEXT = ANY(v_genders))
       AND (v_location IS NULL OR p.location ILIKE '%' || v_location || '%')
-      AND (p_interests IS NULL OR cardinality(p_interests) = 0 OR p.interests && p_interests)
-      AND (p_looking_for IS NULL OR cardinality(p_looking_for) = 0 OR p.looking_for = ANY(p_looking_for))
+      AND (v_interests IS NULL OR p.interests && v_interests)
+      AND (v_looking_for IS NULL OR p.looking_for = ANY(v_looking_for))
       AND NOT EXISTS (
         SELECT 1 FROM public.arrow_likes l
         WHERE l.from_user_id = v_actor AND l.to_user_id = p.id
       )
       AND NOT public.arrow_is_blocked_pair(v_actor, p.id)
+  ),
+  page AS (
+    SELECT id,
+           ROW_NUMBER() OVER (
+             ORDER BY
+               -- People who already sent you an arrow come first: they are
+               -- the likeliest match and the best use of a swipe. Boosted
+               -- profiles come next, then whoever was around most recently.
+               liked_me DESC,
+               boosted DESC,
+               last_active_at DESC NULLS LAST,
+               created_at DESC
+           ) AS ord
+    FROM candidates
+    -- Incognito people only appear to someone they already sent an arrow to.
+    WHERE NOT hidden OR liked_me
+    ORDER BY ord
     LIMIT v_limit
-  ) feed;
+  )
+  SELECT COALESCE(jsonb_agg(public.arrow_safe_profile(page.id) ORDER BY page.ord), '[]'::jsonb)
+  INTO v_result
+  FROM page;
 
   RETURN v_result;
 END;
@@ -967,8 +1222,10 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_actor UUID := public.arrow_actor();
+  v_plan arrow_plan := public.arrow_effective_plan(v_actor);
   v_arrows INT;
   v_super INT;
+  v_rewinds INT;
 BEGIN
   SELECT
     COUNT(*) FILTER (WHERE is_pass = FALSE),
@@ -978,22 +1235,36 @@ BEGIN
   WHERE from_user_id = v_actor
     AND created_at > NOW() - INTERVAL '24 hours';
 
+  SELECT COUNT(*) INTO v_rewinds
+  FROM public.arrow_usage
+  WHERE user_id = v_actor AND kind = 'rewind'
+    AND created_at > NOW() - INTERVAL '24 hours';
+
   RETURN jsonb_build_object(
+    'plan', v_plan,
     'arrowsUsed', v_arrows,
-    'arrowsLimit', public.arrow_limit('daily_arrows'),
-    'arrowsRemaining', GREATEST(0, public.arrow_limit('daily_arrows') - v_arrows),
+    'arrowsLimit', public.arrow_plan_limit(v_plan, 'daily_arrows'),
+    'arrowsRemaining', GREATEST(0, public.arrow_plan_limit(v_plan, 'daily_arrows') - v_arrows),
+    'arrowsUnlimited', public.arrow_is_unlimited(v_plan, 'daily_arrows'),
     'superUsed', v_super,
-    'superLimit', public.arrow_limit('daily_super'),
-    'superRemaining', GREATEST(0, public.arrow_limit('daily_super') - v_super)
+    'superLimit', public.arrow_plan_limit(v_plan, 'daily_super'),
+    'superRemaining', GREATEST(0, public.arrow_plan_limit(v_plan, 'daily_super') - v_super),
+    'rewindsRemaining', GREATEST(0, public.arrow_plan_limit(v_plan, 'daily_rewinds') - v_rewinds),
+    'rewindsUnlimited', public.arrow_is_unlimited(v_plan, 'daily_rewinds')
   );
 END;
 $$;
 
 -- 7.10 Send an arrow. Returns whether it produced a match, plus the partner's
 -- safe profile so the client never has to make a second, unauthorized lookup.
+-- The signature gained p_note; drop the old one so the two do not coexist as
+-- overloads (an old two-argument grant would otherwise linger).
+DROP FUNCTION IF EXISTS public.arrow_like_profile(UUID, BOOLEAN);
+
 CREATE OR REPLACE FUNCTION public.arrow_like_profile(
   p_target_id UUID,
-  p_is_super BOOLEAN DEFAULT FALSE
+  p_is_super BOOLEAN DEFAULT FALSE,
+  p_note TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -1002,6 +1273,9 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_actor UUID := public.arrow_actor();
+  v_plan arrow_plan := public.arrow_effective_plan(v_actor);
+  v_super BOOLEAN := COALESCE(p_is_super, FALSE);
+  v_note TEXT := NULLIF(btrim(COALESCE(p_note, '')), '');
   v_used INT;
   v_limit INT;
   v_match RECORD;
@@ -1014,11 +1288,23 @@ BEGIN
     RAISE EXCEPTION 'Profile not available' USING ERRCODE = '42501';
   END IF;
 
-  IF p_is_super THEN
+  IF v_note IS NOT NULL THEN
+    IF NOT v_super THEN
+      RAISE EXCEPTION 'A note can only be sent with a super arrow' USING ERRCODE = '22023';
+    END IF;
+    IF NOT public.arrow_plan_has(v_plan, 'arrow_notes') THEN
+      RAISE EXCEPTION 'Notes with super arrows are part of ARROW Plus' USING ERRCODE = 'P0402';
+    END IF;
+    IF char_length(v_note) > 140 THEN
+      RAISE EXCEPTION 'Keep the note to 140 characters' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
+  IF v_super THEN
     SELECT COUNT(*) INTO v_used FROM public.arrow_likes
     WHERE from_user_id = v_actor AND is_pass = FALSE AND is_super = TRUE
       AND created_at > NOW() - INTERVAL '24 hours';
-    v_limit := public.arrow_limit('daily_super');
+    v_limit := public.arrow_plan_limit(v_plan, 'daily_super');
     IF v_used >= v_limit THEN
       RAISE EXCEPTION 'You have used all % super arrows for today', v_limit USING ERRCODE = '53400';
     END IF;
@@ -1027,17 +1313,18 @@ BEGIN
   SELECT COUNT(*) INTO v_used FROM public.arrow_likes
   WHERE from_user_id = v_actor AND is_pass = FALSE
     AND created_at > NOW() - INTERVAL '24 hours';
-  v_limit := public.arrow_limit('daily_arrows');
+  v_limit := public.arrow_plan_limit(v_plan, 'daily_arrows');
 
   IF v_used >= v_limit THEN
     RAISE EXCEPTION 'Daily arrow limit reached. Try again tomorrow.' USING ERRCODE = '53400';
   END IF;
 
-  INSERT INTO public.arrow_likes (from_user_id, to_user_id, is_pass, is_super, created_at)
-  VALUES (v_actor, p_target_id, FALSE, COALESCE(p_is_super, FALSE), NOW())
+  INSERT INTO public.arrow_likes (from_user_id, to_user_id, is_pass, is_super, note, created_at)
+  VALUES (v_actor, p_target_id, FALSE, v_super, v_note, NOW())
   ON CONFLICT (from_user_id, to_user_id) DO UPDATE
     SET is_pass = FALSE,
         is_super = arrow_likes.is_super OR EXCLUDED.is_super,
+        note = COALESCE(EXCLUDED.note, arrow_likes.note),
         created_at = NOW();
 
   -- The trigger below creates the match row if this completed a mutual like.
@@ -1085,7 +1372,7 @@ BEGIN
   INSERT INTO public.arrow_likes (from_user_id, to_user_id, is_pass, created_at)
   VALUES (v_actor, p_target_id, TRUE, NOW())
   ON CONFLICT (from_user_id, to_user_id) DO UPDATE
-    SET is_pass = TRUE, is_super = FALSE, created_at = NOW();
+    SET is_pass = TRUE, is_super = FALSE, note = NULL, created_at = NOW();
 
   RETURN jsonb_build_object('success', TRUE);
 END;
@@ -1103,8 +1390,20 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_actor UUID := public.arrow_actor();
+  v_plan arrow_plan := public.arrow_effective_plan(v_actor);
   v_last RECORD;
+  v_used INT;
 BEGIN
+  SELECT COUNT(*) INTO v_used
+  FROM public.arrow_usage
+  WHERE user_id = v_actor AND kind = 'rewind'
+    AND created_at > NOW() - INTERVAL '24 hours';
+
+  IF v_used >= public.arrow_plan_limit(v_plan, 'daily_rewinds') THEN
+    RAISE EXCEPTION 'You have used today''s free rewind. ARROW Plus rewinds without limit.'
+      USING ERRCODE = 'P0402';
+  END IF;
+
   SELECT * INTO v_last
   FROM public.arrow_likes
   WHERE from_user_id = v_actor
@@ -1121,6 +1420,7 @@ BEGIN
   END IF;
 
   DELETE FROM public.arrow_likes WHERE id = v_last.id;
+  INSERT INTO public.arrow_usage (user_id, kind) VALUES (v_actor, 'rewind');
 
   RETURN jsonb_build_object(
     'success', TRUE,
@@ -1130,8 +1430,14 @@ BEGIN
 END;
 $$;
 
--- 7.13 Arrows you received, newest and super arrows first. Each entry carries
+-- 7.13 Arrows you received, super arrows and newest first. Each entry carries
 -- the sender's safe profile, so the likes screen needs no per-row lookup.
+--
+-- Seeing who liked you is a Plus feature. On the free plan only super arrows
+-- are revealed — someone who spent one wanted to be seen — and the rest are
+-- returned as a count. The identities are withheld HERE, not blurred in the
+-- client: a free account receives no id, photo or name for a hidden like, and
+-- the arrow_likes table policy no longer exposes rows pointed at you either.
 CREATE OR REPLACE FUNCTION public.arrow_get_received_likes()
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -1140,32 +1446,51 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_actor UUID := public.arrow_actor();
+  v_can_see BOOLEAN := public.arrow_has_feature(v_actor, 'see_likes');
+  v_entries JSONB;
+  v_hidden INT;
 BEGIN
-  RETURN COALESCE((
-    SELECT jsonb_agg(entry ORDER BY ord)
-    FROM (
-      SELECT
-        jsonb_build_object(
-          'profile', public.arrow_safe_profile(l.from_user_id),
-          'isSuper', l.is_super,
-          'createdAt', l.created_at
-        ) AS entry,
-        ROW_NUMBER() OVER (ORDER BY l.is_super DESC, l.created_at DESC) AS ord
-      FROM public.arrow_likes l
-      JOIN public.arrow_profiles p ON p.id = l.from_user_id
-      WHERE l.to_user_id = v_actor
-        AND l.is_pass = FALSE
-        AND p.is_banned = FALSE
-        AND p.deleted_at IS NULL
-        AND NOT public.arrow_is_blocked_pair(v_actor, l.from_user_id)
-        -- Hide anyone you have already answered.
-        AND NOT EXISTS (
-          SELECT 1 FROM public.arrow_likes mine
-          WHERE mine.from_user_id = v_actor AND mine.to_user_id = l.from_user_id
-        )
-      LIMIT 100
-    ) rows
-  ), '[]'::jsonb);
+  WITH pending AS (
+    SELECT l.from_user_id, l.is_super, l.note, l.created_at
+    FROM public.arrow_likes l
+    JOIN public.arrow_profiles p ON p.id = l.from_user_id
+    WHERE l.to_user_id = v_actor
+      AND l.is_pass = FALSE
+      AND p.is_banned = FALSE
+      AND p.deleted_at IS NULL
+      AND NOT public.arrow_is_blocked_pair(v_actor, l.from_user_id)
+      -- Hide anyone you have already answered.
+      AND NOT EXISTS (
+        SELECT 1 FROM public.arrow_likes mine
+        WHERE mine.from_user_id = v_actor AND mine.to_user_id = l.from_user_id
+      )
+  ),
+  visible AS (
+    SELECT *, ROW_NUMBER() OVER (ORDER BY is_super DESC, created_at DESC) AS ord
+    FROM pending
+    WHERE v_can_see OR is_super
+    ORDER BY ord
+    LIMIT 100
+  )
+  SELECT
+    COALESCE((
+      SELECT jsonb_agg(
+               jsonb_build_object(
+                 'profile', public.arrow_safe_profile(v.from_user_id),
+                 'isSuper', v.is_super,
+                 'note', v.note,
+                 'createdAt', v.created_at
+               ) ORDER BY v.ord)
+      FROM visible v
+    ), '[]'::jsonb),
+    (SELECT COUNT(*) FROM pending WHERE NOT (v_can_see OR is_super))
+  INTO v_entries, v_hidden;
+
+  RETURN jsonb_build_object(
+    'entries', v_entries,
+    'hiddenCount', v_hidden,
+    'locked', NOT v_can_see
+  );
 END;
 $$;
 
@@ -1186,6 +1511,7 @@ BEGIN
         jsonb_build_object(
           'profile', public.arrow_safe_profile(l.to_user_id),
           'isSuper', l.is_super,
+          'note', l.note,
           'createdAt', l.created_at
         ) AS entry,
         ROW_NUMBER() OVER (ORDER BY l.created_at DESC) AS ord
@@ -1197,6 +1523,7 @@ BEGIN
         AND p.deleted_at IS NULL
         AND NOT public.arrow_is_matched(v_actor, l.to_user_id)
         AND NOT public.arrow_is_blocked_pair(v_actor, l.to_user_id)
+      ORDER BY ord
       LIMIT 100
     ) rows
   ), '[]'::jsonb);
@@ -1252,6 +1579,7 @@ BEGIN
       WHERE (m.user1_id = v_actor OR m.user2_id = v_actor)
         AND p.is_banned = FALSE
         AND p.deleted_at IS NULL
+      ORDER BY ord
       LIMIT 200
     ) rows
   ), '[]'::jsonb);
@@ -1396,6 +1724,7 @@ DECLARE
   v_actor UUID := public.arrow_actor();
   v_partner UUID := public.arrow_match_partner(v_actor, p_match_id);
   v_limit INT := LEAST(GREATEST(COALESCE(p_limit, 100), 1), 200);
+  v_receipts BOOLEAN := public.arrow_has_feature(v_actor, 'read_receipts');
 BEGIN
   RETURN COALESCE((
     SELECT jsonb_agg(entry ORDER BY ord)
@@ -1407,7 +1736,10 @@ BEGIN
           'body', msg.body,
           'isMine', msg.sender_id = v_actor,
           'createdAt', msg.created_at,
-          'readAt', msg.read_at
+          -- When the partner read YOUR message is a Premium read receipt.
+          -- When you read theirs is your own action and always yours to see.
+          'readAt', CASE WHEN msg.sender_id <> v_actor OR v_receipts THEN msg.read_at END,
+          'reaction', msg.reaction
         ) AS entry,
         ROW_NUMBER() OVER (ORDER BY msg.created_at ASC) AS ord
       FROM (
@@ -1441,6 +1773,50 @@ BEGIN
 
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN jsonb_build_object('success', TRUE, 'marked', v_count);
+END;
+$$;
+
+-- React to a message your match sent you. Only the recipient may react, and
+-- only with the fixed set in check_arrow_message_reaction; NULL clears it.
+CREATE OR REPLACE FUNCTION public.arrow_react_to_message(
+  p_message_id UUID,
+  p_reaction TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_msg RECORD;
+  v_partner UUID;
+BEGIN
+  SELECT id, match_id, sender_id INTO v_msg
+  FROM public.arrow_messages WHERE id = p_message_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Message not found' USING ERRCODE = '42501';
+  END IF;
+
+  -- Raises unless the caller is in the match, same as every chat call.
+  v_partner := public.arrow_match_partner(v_actor, v_msg.match_id);
+
+  IF v_msg.sender_id = v_actor THEN
+    RAISE EXCEPTION 'You can only react to messages you received' USING ERRCODE = '22023';
+  END IF;
+
+  IF public.arrow_is_blocked_pair(v_actor, v_partner) THEN
+    RAISE EXCEPTION 'Message not found' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_reaction IS NOT NULL AND p_reaction NOT IN ('❤️', '😂', '😮', '😢', '👍', '🔥') THEN
+    RAISE EXCEPTION 'That reaction is not available' USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE public.arrow_messages SET reaction = p_reaction WHERE id = p_message_id;
+
+  RETURN jsonb_build_object('id', p_message_id, 'reaction', p_reaction);
 END;
 $$;
 
@@ -1742,8 +2118,399 @@ AS $$
 DECLARE
   v_actor UUID := public.arrow_actor();
 BEGIN
+  -- Deleting the profile would not stop the card being charged. Make the
+  -- person cancel first, so nobody pays for an account that no longer exists.
+  -- (An M-Pesa pass never renews, so it needs no cancelling.)
+  IF EXISTS (
+    SELECT 1 FROM public.arrow_subscriptions
+    WHERE user_id = v_actor AND source = 'card'
+      AND status IN ('active', 'trialing', 'past_due')
+      AND NOT cancel_at_period_end
+  ) THEN
+    RAISE EXCEPTION 'Cancel your ARROW subscription in Settings → Membership before deleting your account.'
+      USING ERRCODE = '55000';
+  END IF;
+
   DELETE FROM public.arrow_profiles WHERE id = v_actor;
   RETURN jsonb_build_object('success', TRUE);
+END;
+$$;
+
+-- 7.23 MEMBERSHIP ----------------------------------------------------------
+-- Everything a client may know or do about its own plan. Note the absence of
+-- any "set my plan" call: plans change only through arrow_record_payment and
+-- arrow_apply_card_subscription, which are granted to service_role (the
+-- payment webhook) and nobody else, and through the one-time trial below.
+
+-- Your plan, what it includes and what you have left.
+CREATE OR REPLACE FUNCTION public.arrow_get_my_plan()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_plan arrow_plan := public.arrow_effective_plan(v_actor);
+  v_sub RECORD;
+  v_boost RECORD;
+  v_boosts_used INT;
+BEGIN
+  SELECT * INTO v_sub FROM public.arrow_subscriptions WHERE user_id = v_actor;
+
+  SELECT ends_at INTO v_boost FROM public.arrow_boosts
+  WHERE user_id = v_actor AND ends_at > NOW()
+  ORDER BY ends_at DESC LIMIT 1;
+
+  SELECT COUNT(*) INTO v_boosts_used FROM public.arrow_boosts
+  WHERE user_id = v_actor AND started_at > NOW() - INTERVAL '7 days';
+
+  RETURN jsonb_build_object(
+    'plan', v_plan,
+    -- Status and dates describe the subscription only while it is what you
+    -- are actually on; an expired row reads as plain free.
+    'status', CASE WHEN v_plan = 'free' THEN 'inactive' ELSE v_sub.status END,
+    'source', CASE WHEN v_plan = 'free' THEN 'none' ELSE v_sub.source END,
+    'currentPeriodEnd', CASE WHEN v_plan = 'free' THEN NULL ELSE v_sub.current_period_end END,
+    'cancelAtPeriodEnd', COALESCE(v_plan <> 'free' AND v_sub.cancel_at_period_end, FALSE),
+    -- How the current plan is paid for, and whether it renews by itself.
+    'paymentMethod', CASE WHEN v_plan = 'free' THEN NULL
+                          WHEN v_sub.source IN ('card', 'mpesa') THEN v_sub.source END,
+    'renews', v_plan <> 'free' AND v_sub.source = 'card' AND NOT v_sub.cancel_at_period_end
+              AND v_sub.status IN ('active', 'past_due'),
+    'canManageBilling', v_plan <> 'free' AND v_sub.source = 'card' AND v_sub.billing_subscription_id IS NOT NULL,
+    'trialAvailable', v_sub.trial_used_at IS NULL AND v_plan = 'free',
+    'trialDays', public.arrow_limit('trial_days'),
+    'features', jsonb_build_object(
+      'seeLikes',        public.arrow_plan_has(v_plan, 'see_likes'),
+      'advancedFilters', public.arrow_plan_has(v_plan, 'advanced_filters'),
+      'arrowNotes',      public.arrow_plan_has(v_plan, 'arrow_notes'),
+      'readReceipts',    public.arrow_plan_has(v_plan, 'read_receipts'),
+      'incognito',       public.arrow_plan_has(v_plan, 'incognito'),
+      'boost',           public.arrow_plan_has(v_plan, 'boost')
+    ),
+    'boostActiveUntil', v_boost.ends_at,
+    'boostsRemaining', GREATEST(0, public.arrow_plan_limit(v_plan, 'weekly_boosts') - v_boosts_used)
+  );
+END;
+$$;
+
+-- The free trial: one per account, ever, for the life of the auth user. It is
+-- the only plan change a client can trigger itself, because it costs nothing
+-- and the database can enforce "once" on its own.
+CREATE OR REPLACE FUNCTION public.arrow_start_trial()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_sub RECORD;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.arrow_profiles WHERE id = v_actor AND is_verified_adult) THEN
+    RAISE EXCEPTION 'Finish setting up your profile first' USING ERRCODE = '22023';
+  END IF;
+
+  -- Lock the row so two simultaneous calls cannot both start a trial.
+  INSERT INTO public.arrow_subscriptions (user_id) VALUES (v_actor)
+  ON CONFLICT (user_id) DO NOTHING;
+
+  SELECT * INTO v_sub FROM public.arrow_subscriptions WHERE user_id = v_actor FOR UPDATE;
+
+  IF v_sub.trial_used_at IS NOT NULL THEN
+    RAISE EXCEPTION 'Your free trial has already been used' USING ERRCODE = '22023';
+  END IF;
+
+  IF public.arrow_effective_plan(v_actor) <> 'free' THEN
+    RAISE EXCEPTION 'You already have a membership' USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE public.arrow_subscriptions
+  SET plan = 'plus',
+      status = 'trialing',
+      source = 'trial',
+      current_period_end = NOW() + make_interval(days => public.arrow_limit('trial_days')),
+      cancel_at_period_end = TRUE,
+      trial_used_at = NOW(),
+      updated_at = NOW()
+  WHERE user_id = v_actor;
+
+  RETURN public.arrow_get_my_plan();
+END;
+$$;
+
+-- Boost (Premium): front of discovery for a short window, once a week.
+CREATE OR REPLACE FUNCTION public.arrow_start_boost()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_plan arrow_plan := public.arrow_effective_plan(v_actor);
+  v_used INT;
+BEGIN
+  IF NOT public.arrow_plan_has(v_plan, 'boost') THEN
+    RAISE EXCEPTION 'Boosts are part of ARROW Premium' USING ERRCODE = 'P0402';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.arrow_profiles WHERE id = v_actor AND (is_paused OR is_incognito)) THEN
+    RAISE EXCEPTION 'Turn off pause and incognito first — a boost needs you visible' USING ERRCODE = '22023';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.arrow_boosts WHERE user_id = v_actor AND ends_at > NOW()) THEN
+    RAISE EXCEPTION 'You are already boosted' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT COUNT(*) INTO v_used FROM public.arrow_boosts
+  WHERE user_id = v_actor AND started_at > NOW() - INTERVAL '7 days';
+
+  IF v_used >= public.arrow_plan_limit(v_plan, 'weekly_boosts') THEN
+    RAISE EXCEPTION 'You have used this week''s boost' USING ERRCODE = '53400';
+  END IF;
+
+  INSERT INTO public.arrow_boosts (user_id, ends_at)
+  VALUES (v_actor, NOW() + make_interval(mins => public.arrow_limit('boost_minutes')));
+
+  RETURN public.arrow_get_my_plan();
+END;
+$$;
+
+-- Incognito (Premium). Turning it OFF is always allowed, on any plan.
+CREATE OR REPLACE FUNCTION public.arrow_set_incognito(p_enabled BOOLEAN)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+BEGIN
+  IF COALESCE(p_enabled, FALSE) AND NOT public.arrow_has_feature(v_actor, 'incognito') THEN
+    RAISE EXCEPTION 'Incognito is part of ARROW Premium' USING ERRCODE = 'P0402';
+  END IF;
+
+  UPDATE public.arrow_profiles
+  SET is_incognito = COALESCE(p_enabled, FALSE), updated_at = NOW()
+  WHERE id = v_actor;
+
+  RETURN public.arrow_get_my_profile();
+END;
+$$;
+
+-- Your payment history, newest first: the receipts list in Membership.
+CREATE OR REPLACE FUNCTION public.arrow_get_my_payments()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+BEGIN
+  RETURN COALESCE((
+    SELECT jsonb_agg(
+             jsonb_build_object(
+               'reference', p.reference,
+               'plan', p.plan,
+               'method', p.method,
+               'amountMinor', p.amount_minor,
+               'currency', p.currency,
+               'coversUntil', p.covers_until,
+               'paidAt', p.paid_at
+             ) ORDER BY p.paid_at DESC)
+    FROM (
+      SELECT * FROM public.arrow_payments
+      WHERE user_id = v_actor
+      ORDER BY paid_at DESC
+      LIMIT 50
+    ) p
+  ), '[]'::jsonb);
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- SERVER ONLY. The functions below are called by the paystack-webhook and
+-- billing Edge Functions using the service role, after Paystack's signature
+-- has been verified. None is granted to clients: each takes a user id, which
+-- is exactly the kind of parameter the client API is built to not have.
+-- ---------------------------------------------------------------------------
+
+-- The old Stripe entry point, if an earlier draft of this schema installed it.
+DROP FUNCTION IF EXISTS public.arrow_apply_billing_event(UUID, TEXT, TEXT, TIMESTAMPTZ, BOOLEAN, TEXT, TEXT);
+
+-- Which ARROW account a Paystack customer belongs to: by the customer code we
+-- stored on their first payment, else by their sign-in email.
+CREATE OR REPLACE FUNCTION public.arrow_billing_user(p_customer_code TEXT, p_email TEXT)
+RETURNS UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT COALESCE(
+    (SELECT user_id FROM public.arrow_subscriptions
+     WHERE p_customer_code IS NOT NULL AND billing_customer_id = p_customer_code),
+    (SELECT id FROM auth.users
+     WHERE p_email IS NOT NULL AND lower(email) = lower(p_email)
+     ORDER BY created_at NULLS LAST
+     LIMIT 1)
+  );
+$$;
+
+-- Record one successful payment, exactly once.
+--
+-- Card payments only record the receipt; the subscription's state arrives
+-- through arrow_apply_card_subscription. An M-Pesa payment IS the plan: it
+-- buys p_pass_days of access, added to the end of a pass for the same plan
+-- that is still running, or starting now otherwise. It never renews.
+--
+-- Returns {applied: false} for a reference that was already recorded, so a
+-- webhook delivered twice cannot grant time twice.
+CREATE OR REPLACE FUNCTION public.arrow_record_payment(
+  p_reference TEXT,
+  p_user_id UUID,
+  p_plan TEXT,
+  p_method TEXT,
+  p_amount_minor BIGINT,
+  p_currency TEXT,
+  p_customer_code TEXT DEFAULT NULL,
+  p_pass_days INT DEFAULT 30
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_plan arrow_plan := p_plan::arrow_plan;
+  v_sub RECORD;
+  v_start TIMESTAMPTZ;
+  v_until TIMESTAMPTZ;
+BEGIN
+  IF p_user_id IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id = p_user_id) THEN
+    RAISE EXCEPTION 'Unknown user %', p_user_id USING ERRCODE = '22023';
+  END IF;
+  IF v_plan = 'free' THEN
+    RAISE EXCEPTION 'Payments are only for paid plans' USING ERRCODE = '22023';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.arrow_payments WHERE reference = p_reference) THEN
+    RETURN jsonb_build_object('applied', FALSE);
+  END IF;
+
+  INSERT INTO public.arrow_subscriptions (user_id) VALUES (p_user_id)
+  ON CONFLICT (user_id) DO NOTHING;
+  SELECT * INTO v_sub FROM public.arrow_subscriptions WHERE user_id = p_user_id FOR UPDATE;
+
+  IF p_method = 'mpesa' THEN
+    -- Top up a running pass for the same plan; otherwise start from now.
+    v_start := CASE
+      WHEN v_sub.source = 'mpesa' AND v_sub.plan = v_plan
+           AND v_sub.current_period_end > NOW() THEN v_sub.current_period_end
+      ELSE NOW()
+    END;
+    v_until := v_start + make_interval(days => GREATEST(1, COALESCE(p_pass_days, 30)));
+
+    UPDATE public.arrow_subscriptions
+    SET plan = v_plan,
+        status = 'active',
+        source = 'mpesa',
+        current_period_end = v_until,
+        cancel_at_period_end = TRUE,
+        billing_customer_id = COALESCE(billing_customer_id, p_customer_code),
+        trial_used_at = COALESCE(trial_used_at, NOW()),
+        updated_at = NOW()
+    WHERE user_id = p_user_id;
+  ELSIF p_method = 'card' THEN
+    UPDATE public.arrow_subscriptions
+    SET billing_customer_id = COALESCE(billing_customer_id, p_customer_code),
+        trial_used_at = COALESCE(trial_used_at, NOW()),
+        updated_at = NOW()
+    WHERE user_id = p_user_id;
+  ELSE
+    RAISE EXCEPTION 'Unknown payment method %', p_method USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.arrow_payments (reference, user_id, plan, method, amount_minor, currency, covers_until)
+  VALUES (p_reference, p_user_id, v_plan, p_method, p_amount_minor, upper(p_currency), v_until);
+
+  RETURN jsonb_build_object('applied', TRUE, 'coversUntil', v_until);
+END;
+$$;
+
+-- Apply the state of a Paystack card subscription. Paystack statuses:
+--   active        renewing normally
+--   non-renewing  cancelled by the customer; runs to next_payment_date
+--   attention     the last renewal charge failed; Paystack keeps retrying
+--   completed / cancelled   over
+--
+-- Events about a subscription that is no longer the account's current one are
+-- ignored unless they make it active, so an old subscription finishing cannot
+-- switch off a newer plan.
+CREATE OR REPLACE FUNCTION public.arrow_apply_card_subscription(
+  p_user_id UUID,
+  p_plan TEXT,
+  p_status TEXT,
+  p_period_end TIMESTAMPTZ,
+  p_customer_code TEXT,
+  p_subscription_code TEXT,
+  p_email_token TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_sub RECORD;
+  v_status TEXT := CASE p_status
+    WHEN 'active'       THEN 'active'
+    WHEN 'non-renewing' THEN 'active'
+    WHEN 'attention'    THEN 'past_due'
+    ELSE 'canceled'
+  END;
+BEGIN
+  IF p_user_id IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id = p_user_id) THEN
+    RAISE EXCEPTION 'Unknown user %', p_user_id USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.arrow_subscriptions (user_id) VALUES (p_user_id)
+  ON CONFLICT (user_id) DO NOTHING;
+  SELECT * INTO v_sub FROM public.arrow_subscriptions WHERE user_id = p_user_id FOR UPDATE;
+
+  IF v_sub.billing_subscription_id IS DISTINCT FROM p_subscription_code
+     AND v_sub.billing_subscription_id IS NOT NULL
+     AND v_status <> 'active' THEN
+    RETURN jsonb_build_object('applied', FALSE, 'reason', 'stale subscription');
+  END IF;
+
+  -- Ending a subscription never takes away time already paid for: if this is
+  -- the current subscription and its paid period has not run out, it keeps
+  -- working until then and simply does not renew.
+  IF v_status = 'canceled'
+     AND v_sub.billing_subscription_id = p_subscription_code
+     AND v_sub.current_period_end > NOW() THEN
+    v_status := 'active';
+    p_period_end := GREATEST(v_sub.current_period_end, COALESCE(p_period_end, v_sub.current_period_end));
+  END IF;
+
+  UPDATE public.arrow_subscriptions
+  SET plan = p_plan::arrow_plan,
+      status = v_status,
+      source = 'card',
+      current_period_end = p_period_end,
+      cancel_at_period_end = (p_status <> 'active' AND p_status <> 'attention'),
+      billing_customer_id = COALESCE(p_customer_code, billing_customer_id),
+      billing_subscription_id = p_subscription_code,
+      billing_email_token = COALESCE(p_email_token, billing_email_token),
+      trial_used_at = COALESCE(trial_used_at, NOW()),
+      updated_at = NOW()
+  WHERE user_id = p_user_id;
+
+  RETURN jsonb_build_object('applied', TRUE);
 END;
 $$;
 
@@ -1867,6 +2634,10 @@ ALTER TABLE public.arrow_matches           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.arrow_messages          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.arrow_blocks            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.arrow_reports           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.arrow_subscriptions     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.arrow_boosts            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.arrow_usage             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.arrow_payments          ENABLE ROW LEVEL SECURITY;
 
 -- Remove every policy this project has ever defined on these tables, so a
 -- re-run cannot leave a stale, more permissive policy behind.
@@ -1880,7 +2651,8 @@ BEGIN
       AND tablename IN (
         'arrow_profiles', 'arrow_age_verifications', 'arrow_profile_photos',
         'arrow_preferences', 'arrow_likes', 'arrow_matches', 'arrow_messages',
-        'arrow_blocks', 'arrow_reports'
+        'arrow_blocks', 'arrow_reports', 'arrow_subscriptions', 'arrow_boosts',
+        'arrow_usage', 'arrow_payments'
       )
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
@@ -1910,10 +2682,13 @@ CREATE POLICY "arrow_preferences_select_own"
 ON public.arrow_preferences FOR SELECT TO authenticated
 USING (auth.uid() = user_id);
 
--- 9.5 Likes: the ones you sent, and the ones pointed at you.
+-- 9.5 Likes: only the ones you sent. Arrows pointed AT you are deliberately
+-- not readable here — they arrive through arrow_get_received_likes, which
+-- decides what your plan reveals. Allowing `to_user_id = auth.uid()` would
+-- let any free account list everyone who liked it with one table query.
 CREATE POLICY "arrow_likes_select_own"
 ON public.arrow_likes FOR SELECT TO authenticated
-USING (auth.uid() = from_user_id OR auth.uid() = to_user_id);
+USING (auth.uid() = from_user_id);
 
 -- 9.6 Matches: the ones you are in.
 CREATE POLICY "arrow_matches_select_own"
@@ -1941,19 +2716,43 @@ CREATE POLICY "arrow_reports_select_own"
 ON public.arrow_reports FOR SELECT TO authenticated
 USING (auth.uid() = reporter_id);
 
--- 9.9 Table privileges: read-only for clients, belt and braces alongside RLS.
+-- 9.9 Boosts and usage: yours only. Subscriptions get no policy and no grant
+-- at all (see 9.10) — billing identifiers stay server-side.
+CREATE POLICY "arrow_boosts_select_own"
+ON public.arrow_boosts FOR SELECT TO authenticated
+USING (auth.uid() = user_id);
+
+CREATE POLICY "arrow_usage_select_own"
+ON public.arrow_usage FOR SELECT TO authenticated
+USING (auth.uid() = user_id);
+
+-- 9.10 Table privileges: read-only for clients, belt and braces alongside RLS.
 DO $$
 DECLARE t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'arrow_profiles', 'arrow_age_verifications', 'arrow_profile_photos',
     'arrow_preferences', 'arrow_likes', 'arrow_matches', 'arrow_messages',
-    'arrow_blocks', 'arrow_reports'
+    'arrow_blocks', 'arrow_reports', 'arrow_subscriptions', 'arrow_boosts',
+    'arrow_usage', 'arrow_payments'
   ] LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon, authenticated', t);
-    EXECUTE format('GRANT SELECT ON TABLE public.%I TO authenticated', t);
+    -- Billing tables are read through RPCs only.
+    IF t NOT IN ('arrow_subscriptions', 'arrow_payments') THEN
+      EXECUTE format('GRANT SELECT ON TABLE public.%I TO authenticated', t);
+    END IF;
   END LOOP;
 END $$;
+
+-- Messages are readable column by column, minus read_at. The partner's read
+-- time is a Premium read receipt, served by arrow_get_messages; without this
+-- a free account could read it straight off the table or a Realtime payload.
+REVOKE SELECT ON TABLE public.arrow_messages FROM authenticated;
+GRANT SELECT (id, match_id, sender_id, body, created_at, reaction)
+  ON public.arrow_messages TO authenticated;
+
+-- The paystack-webhook and billing Edge Functions run as service_role.
+GRANT SELECT ON TABLE public.arrow_subscriptions TO service_role;
 
 -- The old permissive discovery view is replaced by arrow_get_discover_feed.
 DROP VIEW IF EXISTS public.arrow_discoverable_profiles;
@@ -1963,6 +2762,45 @@ DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE public.arrow_messages;
 EXCEPTION WHEN duplicate_object THEN null;
         WHEN undefined_object THEN null;
+END $$;
+
+-- Typing indicators travel over Realtime Broadcast on a PRIVATE channel named
+-- `arrow-match:<match id>`. Realtime authorizes private channels against RLS
+-- on realtime.messages, so this policy is what stops a stranger who learned a
+-- match id from listening in or faking "typing…". It only ever grants access
+-- to topics with our prefix, so channels used by other apps are unaffected.
+-- (Also turn off "Allow public access" under Realtime settings, or clients can
+-- simply ask for a public channel instead.)
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "arrow_realtime_match_receive" ON realtime.messages;
+  DROP POLICY IF EXISTS "arrow_realtime_match_send" ON realtime.messages;
+
+  CREATE POLICY "arrow_realtime_match_receive"
+  ON realtime.messages FOR SELECT TO authenticated
+  USING (
+    -- CASE, not AND: Postgres may evaluate AND operands in any order, and the
+    -- cast must never see a topic that is not ours.
+    CASE WHEN realtime.topic() ~ '^arrow-match:[0-9a-f-]{36}$'
+         THEN public.arrow_is_match_member(split_part(realtime.topic(), ':', 2)::UUID)
+         ELSE FALSE
+    END
+  );
+
+  CREATE POLICY "arrow_realtime_match_send"
+  ON realtime.messages FOR INSERT TO authenticated
+  WITH CHECK (
+    -- CASE, not AND: Postgres may evaluate AND operands in any order, and the
+    -- cast must never see a topic that is not ours.
+    CASE WHEN realtime.topic() ~ '^arrow-match:[0-9a-f-]{36}$'
+         THEN public.arrow_is_match_member(split_part(realtime.topic(), ':', 2)::UUID)
+         ELSE FALSE
+    END
+  );
+EXCEPTION
+  -- A plain Postgres without Supabase Realtime has no realtime schema.
+  WHEN undefined_table OR undefined_function OR invalid_schema_name THEN
+    RAISE NOTICE 'Realtime not present; skipped typing-channel policies.';
 END $$;
 
 -- ==============================================================================
@@ -2160,8 +2998,22 @@ DECLARE
     'arrow_reorder_photos',
     'arrow_set_visibility',
     'arrow_delete_my_account',
+    'arrow_react_to_message',
+    'arrow_get_my_plan',
+    'arrow_start_trial',
+    'arrow_start_boost',
+    'arrow_set_incognito',
+    'arrow_get_my_payments',
     -- Evaluated inside the photo and storage RLS policies as the caller.
-    'arrow_can_view_profile_photo'
+    'arrow_can_view_profile_photo',
+    -- Evaluated inside the Realtime channel policies as the caller.
+    'arrow_is_match_member'
+  ];
+  -- Server-only entry points, reachable with the service_role key alone.
+  v_service_api TEXT[] := ARRAY[
+    'arrow_billing_user',
+    'arrow_record_payment',
+    'arrow_apply_card_subscription'
   ];
 BEGIN
   FOR r IN
@@ -2174,8 +3026,12 @@ BEGIN
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM anon', r.sig);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM authenticated', r.sig);
 
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM service_role', r.sig);
+
     IF r.proname = ANY(v_client_api) THEN
       EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', r.sig);
+    ELSIF r.proname = ANY(v_service_api) THEN
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', r.sig);
     END IF;
   END LOOP;
 END $$;
@@ -2208,8 +3064,8 @@ BEGIN
       WHERE n.nspname = 'public' AND c.relname = t.tablename AND c.relrowsecurity
     );
 
-  IF v_tables < 9 THEN
-    RAISE EXCEPTION 'ARROW install incomplete: expected 9 tables, found %', v_tables;
+  IF v_tables < 13 THEN
+    RAISE EXCEPTION 'ARROW install incomplete: expected 13 tables, found %', v_tables;
   END IF;
 
   IF v_unprotected IS NOT NULL THEN

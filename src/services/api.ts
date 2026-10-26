@@ -6,7 +6,12 @@ import {
   LikeEntry,
   LikeQuota,
   LikeResult,
+  LikesInbox,
   MatchWithProfile,
+  MessageReaction,
+  PaymentMethod,
+  PaymentRecord,
+  PlanInfo,
   ReportReason,
   UserProfile,
 } from '../types';
@@ -14,7 +19,8 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { profileService } from './profileService';
 import { likeService } from './likeService';
 import { matchService } from './matchService';
-import { messageService } from './messageService';
+import { ChatSubscription, messageService } from './messageService';
+import { billingService, FREE_PLAN } from './billingService';
 import { preferencesService } from './preferencesService';
 import { blockService } from './blockService';
 import { reportService } from './reportService';
@@ -60,9 +66,9 @@ export const api = {
   },
 
   // -------------------------------------------------------------------- likes
-  async likeProfile(targetId: string, isSuper = false): Promise<LikeResult> {
+  async likeProfile(targetId: string, isSuper = false, note?: string): Promise<LikeResult> {
     if (isSupabaseConfigured) {
-      return likeService.likeProfile(targetId, isSuper);
+      return likeService.likeProfile(targetId, isSuper, note);
     }
 
     const actor = localActor();
@@ -91,13 +97,17 @@ export const api = {
     return { success: false, error: 'Undo needs a connected account.' };
   },
 
-  async getLikes(): Promise<LikeEntry[]> {
+  async getLikes(): Promise<LikesInbox> {
     if (isSupabaseConfigured) {
       return likeService.getReceivedLikes();
     }
-    return storageService
-      .getIncomingLikes(localActor())
-      .map((r) => ({ profile: r.profile, isSuper: false, createdAt: r.like.createdAt }));
+    return {
+      entries: storageService
+        .getIncomingLikes(localActor())
+        .map((r) => ({ profile: r.profile, isSuper: false, createdAt: r.like.createdAt })),
+      hiddenCount: 0,
+      locked: false,
+    };
   },
 
   async getSentLikes(): Promise<LikeEntry[]> {
@@ -156,11 +166,85 @@ export const api = {
     }
   },
 
-  subscribeToMessages(matchId: string, onMessage: (message: ChatMessage) => void): () => void {
+  async reactToMessage(messageId: string, reaction: MessageReaction | null): Promise<void> {
     if (isSupabaseConfigured) {
-      return messageService.subscribe(matchId, onMessage);
+      await messageService.react(messageId, reaction);
+    }
+  },
+
+  subscribeToChat(
+    matchId: string,
+    myId: string | null,
+    handlers: ChatSubscription
+  ): { unsubscribe: () => void; setTyping: (typing: boolean) => void } {
+    if (isSupabaseConfigured) {
+      return messageService.subscribe(matchId, myId, handlers);
+    }
+    return { unsubscribe: () => undefined, setTyping: () => undefined };
+  },
+
+  subscribeToInbox(myId: string, onIncoming: (message: ChatMessage) => void): () => void {
+    if (isSupabaseConfigured) {
+      return messageService.subscribeToInbox(myId, onIncoming);
     }
     return () => undefined;
+  },
+
+  // --------------------------------------------------------------- membership
+  async getMyPlan(): Promise<PlanInfo> {
+    if (isSupabaseConfigured) {
+      return billingService.getMyPlan();
+    }
+    return FREE_PLAN;
+  },
+
+  async startTrial(): Promise<PlanInfo> {
+    if (isSupabaseConfigured) {
+      return billingService.startTrial();
+    }
+    throw new Error('Memberships need a connected account.');
+  },
+
+  async getPayments(): Promise<PaymentRecord[]> {
+    if (isSupabaseConfigured) {
+      return billingService.getPayments();
+    }
+    return [];
+  },
+
+  async startCheckout(plan: 'plus' | 'premium', method: PaymentMethod): Promise<void> {
+    if (isSupabaseConfigured) {
+      return billingService.startCheckout(plan, method);
+    }
+    throw new Error('Memberships need a connected account.');
+  },
+
+  async cancelRenewal(): Promise<void> {
+    if (isSupabaseConfigured) {
+      return billingService.cancelRenewal();
+    }
+    throw new Error('Memberships need a connected account.');
+  },
+
+  async openBillingPortal(): Promise<void> {
+    if (isSupabaseConfigured) {
+      return billingService.openBillingPortal();
+    }
+    throw new Error('Memberships need a connected account.');
+  },
+
+  async startBoost(): Promise<PlanInfo> {
+    if (isSupabaseConfigured) {
+      return billingService.startBoost();
+    }
+    throw new Error('Boosts need a connected account.');
+  },
+
+  async setIncognito(enabled: boolean): Promise<UserProfile | null> {
+    if (isSupabaseConfigured) {
+      return profileService.setIncognito(enabled);
+    }
+    throw new Error('Incognito needs a connected account.');
   },
 
   // ------------------------------------------------------------------- safety
@@ -273,7 +357,8 @@ export const api = {
   },
 
   // ------------------------------------------------------------------- photos
-  async uploadPhoto(file: File, userId: string): Promise<string> {
+  /** Uploads and registers one photo immediately; returns it ready to show. */
+  async uploadPhoto(file: File, userId: string): Promise<{ url: string; ref: string }> {
     if (!file.type.startsWith('image/')) {
       throw new Error('Please select a valid image file (JPEG, PNG, WebP).');
     }
@@ -289,17 +374,30 @@ export const api = {
       const reader = new FileReader();
       reader.onload = () =>
         typeof reader.result === 'string'
-          ? resolve(reader.result)
+          ? resolve({ url: reader.result, ref: reader.result })
           : reject(new Error('Failed to read image file'));
       reader.onerror = () => reject(new Error('File reading error'));
       reader.readAsDataURL(file);
     });
   },
 
-  async deletePhoto(photoRef: string): Promise<void> {
+  /**
+   * Commit the photo manager: remove what was deleted, then store the order of
+   * what is left. Uploads are already saved by uploadPhoto, so only removals
+   * and order are applied here.
+   */
+  async savePhotoChanges(keptRefs: string[], removedRefs: string[]): Promise<void> {
     if (isSupabaseConfigured) {
-      return profileService.deleteProfilePhoto(photoRef);
+      for (const ref of removedRefs) {
+        await profileService.deleteProfilePhoto(ref);
+      }
+      if (keptRefs.length > 0) {
+        await profileService.reorderPhotos(keptRefs);
+      }
+      return;
     }
+
+    await this.updateProfile({ photos: keptRefs, photoRefs: keptRefs });
   },
 
   // ------------------------------------------------------------------ contact
@@ -326,4 +424,5 @@ export {
   preferencesService,
   blockService,
   reportService,
+  billingService,
 };

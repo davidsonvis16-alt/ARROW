@@ -1,19 +1,20 @@
 import React from 'react';
-import { Compass, Heart, Users, User } from 'lucide-react';
+import { Compass, Heart, MessageCircle, User } from 'lucide-react';
 import { TabType } from '../../types';
 
 interface BottomNavProps {
   currentTab: TabType;
   onSelectTab: (tab: TabType) => void;
   likesCount: number;
-  matchesCount: number;
+  /** Unread messages across all matches — what actually needs attention. */
+  unreadCount: number;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   currentTab,
   onSelectTab,
   likesCount,
-  matchesCount,
+  unreadCount,
 }) => {
   const tabs: Array<{
     id: TabType;
@@ -34,9 +35,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     },
     {
       id: 'matches',
-      label: 'Matches',
-      icon: <Users size={20} strokeWidth={2.2} />,
-      badge: matchesCount,
+      label: 'Chats',
+      icon: <MessageCircle size={20} strokeWidth={2.2} />,
+      badge: unreadCount,
     },
     {
       id: 'profile',
@@ -47,7 +48,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     <nav
-      className="lg:hidden sticky bottom-0 z-30 w-full bg-[var(--color-offwhite)]/95 backdrop-blur-md border-t border-[var(--color-border)] px-3 py-2 flex items-center justify-around select-none"
+      className="safe-bottom lg:hidden sticky bottom-0 z-30 w-full bg-[var(--color-offwhite)]/95 backdrop-blur-md border-t border-[var(--color-border)] px-2 pt-1.5 flex items-center justify-around select-none"
       aria-label="Main Navigation"
     >
       {tabs.map((tab) => {

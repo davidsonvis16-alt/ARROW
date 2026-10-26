@@ -8,7 +8,7 @@ export interface ModalProps {
   subtitle?: string;
   children: React.ReactNode;
   variant?: 'center' | 'bottomSheet';
-  maxWidth?: 'sm' | 'md' | 'lg' | 'full';
+  maxWidth?: 'sm' | 'md' | 'lg' | 'full' | 'wide';
   showCloseButton?: boolean;
 }
 
@@ -47,6 +47,7 @@ export const Modal: React.FC<ModalProps> = ({
     md: 'max-w-md',
     lg: 'max-w-lg',
     full: 'max-w-xl',
+    wide: 'max-w-3xl',
   };
 
   if (variant === 'bottomSheet') {
@@ -60,7 +61,7 @@ export const Modal: React.FC<ModalProps> = ({
         <div
           role="dialog"
           aria-modal="true"
-          className={`relative z-10 w-full ${maxWidthStyles[maxWidth]} max-h-[90vh] bg-[var(--color-offwhite)] rounded-t-[32px] border-t border-x border-[var(--color-border)] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-250`}
+          className={`relative z-10 w-full ${maxWidthStyles[maxWidth]} max-h-[92dvh] bg-[var(--color-offwhite)] rounded-t-[32px] border-t border-x border-[var(--color-border)] shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-250`}
         >
           {/* Drag Pill */}
           <div className="pt-3.5 pb-1 flex justify-center cursor-grab active:cursor-grabbing">
@@ -94,7 +95,7 @@ export const Modal: React.FC<ModalProps> = ({
           )}
 
           {/* Body */}
-          <div className="p-6 md:p-8 overflow-y-auto">{children}</div>
+          <div className="p-5 md:p-8 overflow-y-auto pb-[max(1.25rem,env(safe-area-inset-bottom))]">{children}</div>
         </div>
       </div>
     );
@@ -111,7 +112,7 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative z-10 w-full ${maxWidthStyles[maxWidth]} bg-[var(--color-offwhite)] rounded-[32px] border border-[var(--color-border)] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col`}
+        className={`relative z-10 w-full ${maxWidthStyles[maxWidth]} bg-[var(--color-offwhite)] rounded-[28px] border border-[var(--color-border)] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90dvh] flex flex-col`}
       >
         {/* Header */}
         {(title || showCloseButton) && (
@@ -140,7 +141,7 @@ export const Modal: React.FC<ModalProps> = ({
         )}
 
         {/* Content */}
-        <div className="p-6 md:p-8 overflow-y-auto">{children}</div>
+        <div className="p-5 md:p-8 overflow-y-auto">{children}</div>
       </div>
     </div>
   );

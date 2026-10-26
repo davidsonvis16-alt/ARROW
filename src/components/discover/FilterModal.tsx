@@ -3,7 +3,7 @@ import { FilterState, Gender } from '../../types';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { RotateCcw } from 'lucide-react';
+import { Lock, RotateCcw } from 'lucide-react';
 
 interface FilterModalProps {
   isOpen: boolean;
@@ -11,6 +11,9 @@ interface FilterModalProps {
   filters: FilterState;
   onApplyFilters: (newFilters: FilterState) => void;
   onResetFilters: () => void;
+  /** Plus and above. The server ignores these filters otherwise. */
+  canUseAdvanced?: boolean;
+  onUpgrade?: () => void;
 }
 
 const ALL_INTERESTS = [
@@ -44,6 +47,8 @@ export const FilterModal: React.FC<FilterModalProps> = ({
   filters,
   onApplyFilters,
   onResetFilters,
+  canUseAdvanced = true,
+  onUpgrade,
 }) => {
   const [ageMin, setAgeMin] = useState(filters.ageMin);
   const [ageMax, setAgeMax] = useState(filters.ageMax);
@@ -88,8 +93,8 @@ export const FilterModal: React.FC<FilterModalProps> = ({
       ageMax,
       genders,
       location,
-      interests: selectedInterests,
-      lookingFor: selectedLookingFor,
+      interests: canUseAdvanced ? selectedInterests : [],
+      lookingFor: canUseAdvanced ? selectedLookingFor : [],
     });
     onClose();
   };
@@ -196,6 +201,23 @@ export const FilterModal: React.FC<FilterModalProps> = ({
           />
         </div>
 
+        {!canUseAdvanced && (
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="w-full flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[var(--color-arrow-orange-subtle)] text-left"
+          >
+            <span className="flex items-center gap-2.5">
+              <Lock size={16} className="text-[var(--color-arrow-orange-text)] shrink-0" />
+              <span className="text-xs text-[var(--color-ink)]">
+                <span className="font-bold">Filter by intentions and interests</span> with ARROW Plus
+              </span>
+            </span>
+            <span className="text-xs font-black text-[var(--color-arrow-orange-text)] shrink-0">Unlock</span>
+          </button>
+        )}
+
+        <fieldset disabled={!canUseAdvanced} className={`space-y-5 ${canUseAdvanced ? '' : 'opacity-45 pointer-events-none'}`}>
         {/* Looking For Filter */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-[var(--color-ink)]">Looking For</label>
@@ -229,6 +251,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
             ))}
           </div>
         </div>
+        </fieldset>
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-3 border-t border-[var(--color-border-subtle)]">

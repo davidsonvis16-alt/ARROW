@@ -1,5 +1,7 @@
 import React from 'react';
-import { UserProfile } from '../../types';
+import { PlanInfo, UserProfile } from '../../types';
+import { MembershipCard } from '../premium/MembershipCard';
+import { CreatedByEden } from '../brand/Logo';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import {
@@ -23,6 +25,8 @@ interface ProfileViewProps {
   onEditWhatsApp: () => void;
   onOpenSettings: () => void;
   onOpenAuth?: () => void;
+  planInfo: PlanInfo;
+  onOpenPlans: () => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -33,6 +37,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onEditWhatsApp,
   onOpenSettings,
   onOpenAuth,
+  planInfo,
+  onOpenPlans,
 }) => {
   if (!currentUser) {
     return (
@@ -58,6 +64,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <Settings size={18} />
           </button>
         </div>
+
+        <MembershipCard planInfo={planInfo} isGuest onOpen={onOpenPlans} />
 
         {/* Guest Intro Card */}
         <div className="bg-[var(--color-surface)] rounded-[28px] border border-[var(--color-border)] p-6 shadow-xs space-y-5">
@@ -149,6 +157,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <Settings size={18} />
         </button>
       </div>
+
+      <MembershipCard planInfo={planInfo} isGuest={false} onOpen={onOpenPlans} />
 
       {/* Main Profile Card Preview */}
       <div className="bg-[var(--color-surface)] rounded-[28px] border border-[var(--color-border)] overflow-hidden shadow-xs">
@@ -337,6 +347,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <span className="text-xs font-bold text-[var(--color-stone-dark)]">→</span>
         </button>
       </div>
+
+      <CreatedByEden className="text-center pt-2" />
     </div>
   );
 };

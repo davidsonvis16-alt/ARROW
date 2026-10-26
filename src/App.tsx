@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   UserProfile,
   TabType,
@@ -9,7 +9,15 @@ import {
   LikeQuota,
   ReportReason,
   DatingPreferences,
+  PlanInfo,
+  PaymentMethod,
 } from './types';
+import { FREE_PLAN } from './services/billingService';
+import { isUpgradeError } from './services/rpc';
+import { UpgradeReason } from './config/plans';
+import { PlansModal } from './components/premium/PlansModal';
+import { SuperArrowModal } from './components/discover/SuperArrowModal';
+import { Logo, CreatedByEden } from './components/brand/Logo';
 import { storageService } from './services/storageService';
 import { api, authService, profileService } from './services/api';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
@@ -41,10 +49,10 @@ import {
   RefreshCw,
   SlidersHorizontal,
   UserPlus,
-  Database,
-  ExternalLink,
   User,
-  ShieldCheck,
+  Rocket,
+  Zap,
+  Crown,
 } from 'lucide-react';
 
 function ArrowApp() {
@@ -65,8 +73,16 @@ function ArrowApp() {
 
   // Likes & Matches State
   const [incomingLikes, setIncomingLikes] = useState<LikeEntry[]>([]);
+  // Likes the server counted but, on the free plan, did not identify.
+  const [hiddenLikes, setHiddenLikes] = useState(0);
   const [matches, setMatches] = useState<MatchWithProfile[]>([]);
   const [quota, setQuota] = useState<LikeQuota | null>(null);
+
+  // Membership. FREE_PLAN until the server says otherwise; every feature it
+  // unlocks is also enforced by the database, so this only drives the UI.
+  const [planInfo, setPlanInfo] = useState<PlanInfo>(FREE_PLAN);
+  const [plansReason, setPlansReason] = useState<UpgradeReason | null>(null);
+  const [superTarget, setSuperTarget] = useState<UserProfile | null>(null);
 
   // Filters State
   const [filters, setFilters] = useState<FilterState>({
@@ -117,10 +133,14 @@ function ArrowApp() {
           const session = await authService.getSession();
           if (session?.user && mounted) {
             const profile = await profileService.getMyProfile();
-            if (profile && mounted) {
+            if (profile?.isVerifiedAdult && mounted) {
               setCurrentUser(profile);
               setPrevUserId(profile.id);
               await authService.updateLastLogin();
+            } else if (mounted) {
+              // Signed in but never finished setting up (for example they
+              // closed the tab mid-onboarding): pick up where they left off.
+              setIsOnboarding(true);
             }
           }
         } catch (err) {
@@ -144,14 +164,21 @@ function ArrowApp() {
     // Listen to Supabase Auth State changes
     const { unsubscribe } = authService.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const profile = await profileService.getMyProfile();
-        if (profile && mounted) {
+        const profile = await profileService.getMyProfile().catch(() => null);
+        if (profile?.isVerifiedAdult && mounted) {
           setCurrentUser(profile);
+          setIsAuthModalOpen(false);
           await authService.updateLastLogin();
 
           // Presence is surfaced from the matches payload after the first
           // refresh, so nothing extra is fetched here.
           setPrevUserId(profile.id);
+        } else if (mounted) {
+          // A brand-new account (including one that just came back from
+          // Google) goes straight into setup instead of being left signed in
+          // with nothing to show.
+          setIsAuthModalOpen(false);
+          setIsOnboarding(true);
         }
       } else if (event === 'PASSWORD_RECOVERY') {
         // The reset link already signed this person in, so the only thing left
@@ -204,17 +231,20 @@ function ArrowApp() {
   const refreshAppData = useCallback(async () => {
     setIsLoadingDiscover(true);
     try {
-      const [feed, likesData, matchesData, quotaData] = await Promise.all([
+      const [feed, likesData, matchesData, quotaData, plan] = await Promise.all([
         api.getDiscoverProfiles(filters),
         api.getLikes(),
         api.getMatches(),
         api.getLikeQuota(),
+        currentUser ? api.getMyPlan() : Promise.resolve(FREE_PLAN),
       ]);
       setDiscoverProfiles(feed);
       setCardIndex(0);
-      setIncomingLikes(likesData);
+      setIncomingLikes(likesData.entries);
+      setHiddenLikes(likesData.hiddenCount);
       setMatches(matchesData);
       setQuota(quotaData);
+      setPlanInfo(plan);
     } catch (err) {
       console.error('Failed to load ARROW app data', err);
     } finally {
@@ -226,17 +256,111 @@ function ArrowApp() {
     refreshAppData();
   }, [refreshAppData]);
 
+  /** Matches and likes only, without reshuffling the discovery deck. */
+  const refreshInbox = useCallback(async () => {
+    const [likesData, matchesData] = await Promise.all([api.getLikes(), api.getMatches()]);
+    setIncomingLikes(likesData.entries);
+    setHiddenLikes(likesData.hiddenCount);
+    setMatches(matchesData);
+  }, []);
+
+  const refreshPlan = useCallback(async () => {
+    const [plan, quotaData] = await Promise.all([api.getMyPlan(), api.getLikeQuota()]);
+    setPlanInfo(plan);
+    setQuota(quotaData);
+    return plan;
+  }, []);
+
+  // New messages anywhere: keep the unread badges live, and say who wrote
+  // unless that conversation is already open.
+  const selectedMatchRef = useRef<string | null>(null);
+  selectedMatchRef.current = selectedMatch?.id ?? null;
+  const matchesRef = useRef<MatchWithProfile[]>([]);
+  matchesRef.current = matches;
+
+  useEffect(() => {
+    if (!currentUser) return;
+    return api.subscribeToInbox(currentUser.id, (message) => {
+      if (message.matchId !== selectedMatchRef.current) {
+        const from = matchesRef.current.find((m) => m.id === message.matchId)?.partnerProfile.name;
+        showToast(from ? `New message from ${from}` : 'You have a new message', 'info');
+      }
+      refreshInbox();
+    });
+    // showToast is stable for the provider's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, refreshInbox]);
+
+  // A shareable link straight to pricing: /#pricing or /?plans
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (window.location.hash === '#pricing' || params.has('plans')) setPlansReason('browse');
+  }, []);
+
+  // Coming back from Paystack's checkout or card-update page.
+  useEffect(() => {
+    if (!currentUser) return;
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get('membership');
+    if (!outcome) return;
+
+    params.delete('membership');
+    const query = params.toString();
+    window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
+
+    if (outcome === 'success') {
+      // The webhook usually lands within a second or two; look again shortly
+      // in case the browser got back first.
+      showToast('Payment received — switching on your membership…', 'success');
+      refreshPlan().then((plan) => {
+        if (plan.plan === 'free') window.setTimeout(refreshPlan, 4000);
+      });
+    } else if (outcome === 'returned') {
+      refreshPlan();
+    } else if (outcome === 'cancelled') {
+      showToast('Payment cancelled — nothing was charged.', 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  const openPlans = (reason: UpgradeReason = 'browse') => setPlansReason(reason);
+
+  /** Called by the sign-in sheet once Supabase has a session. */
+  const handleAuthenticated = async () => {
+    setIsAuthModalOpen(false);
+    const profile = await profileService.getMyProfile().catch(() => null);
+    if (profile?.isVerifiedAdult) {
+      setCurrentUser(profile);
+      showToast(`Welcome back, ${profile.name}`, 'success');
+    } else {
+      setIsOnboarding(true);
+    }
+  };
+
+  const unreadTotal = matches.reduce((sum, m) => sum + (m.unreadCount || 0), 0);
+
   // Discovery Actions
-  const handleLike = async (targetProfile: UserProfile, isSuper = false) => {
+  const handleLike = async (targetProfile: UserProfile, isSuper = false, note?: string) => {
     if (!currentUser) {
       setIsAuthModalOpen(true);
       showToast(`Log in or create a profile to send an Arrow to ${targetProfile.name}`, 'info');
       return;
     }
 
+    if (isSuper && quota && quota.superRemaining <= 0) {
+      openPlans('arrows');
+      return;
+    }
+
+    // On Plus, a super arrow can carry a note: ask for it first.
+    if (isSuper && note === undefined && planInfo.features.arrowNotes) {
+      setSuperTarget(targetProfile);
+      return;
+    }
+
     setCardAnimation(isSuper ? 'super' : 'like');
     try {
-      const result = await api.likeProfile(targetProfile.id, isSuper);
+      const result = await api.likeProfile(targetProfile.id, isSuper, note);
       if (result.quota) setQuota(result.quota);
 
       setTimeout(() => {
@@ -254,7 +378,12 @@ function ArrowApp() {
       }, 250);
     } catch (err: any) {
       setCardAnimation(null);
-      showToast(err.message || 'Could not send that arrow', 'error');
+      if (isUpgradeError(err)) {
+        openPlans(isSuper ? 'arrows' : planInfo.plan === 'free' ? 'arrows' : 'browse');
+        showToast(err.message, 'info');
+      } else {
+        showToast(err.message || 'Could not send that arrow', 'error');
+      }
     }
   };
 
@@ -310,7 +439,79 @@ function ArrowApp() {
       const refreshedQuota = await api.getLikeQuota();
       setQuota(refreshedQuota);
     } catch (err: any) {
-      showToast(err.message || 'Could not undo that', 'error');
+      if (isUpgradeError(err)) {
+        openPlans('rewind');
+      } else {
+        showToast(err.message || 'Could not undo that', 'error');
+      }
+    }
+  };
+
+  const handleBoost = async () => {
+    if (!planInfo.features.boost) {
+      openPlans('boost');
+      return;
+    }
+    try {
+      setPlanInfo(await api.startBoost());
+      showToast("You're boosted for the next 30 minutes", 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Could not start a boost', 'error');
+    }
+  };
+
+  // Membership actions --------------------------------------------------------
+  const handleStartTrial = async () => {
+    try {
+      setPlanInfo(await api.startTrial());
+      setPlansReason(null);
+      showToast('Your Plus trial has started. Enjoy!', 'success');
+      refreshAppData();
+    } catch (err: any) {
+      showToast(err.message || 'Could not start your trial', 'error');
+    }
+  };
+
+  const handleChoosePlan = async (plan: 'plus' | 'premium', method: PaymentMethod) => {
+    try {
+      // Leaves the app for Paystack's checkout page; returns only if that fails.
+      await api.startCheckout(plan, method);
+    } catch (err: any) {
+      showToast(err.message || 'Could not open the payment page', 'error');
+    }
+  };
+
+  const handleCancelRenewal = async () => {
+    try {
+      await api.cancelRenewal();
+      const plan = await refreshPlan();
+      showToast(
+        plan.currentPeriodEnd
+          ? `Renewal cancelled. You keep your plan until ${new Date(plan.currentPeriodEnd).toLocaleDateString()}.`
+          : 'Renewal cancelled.',
+        'success'
+      );
+    } catch (err: any) {
+      showToast(err.message || 'Could not cancel renewal', 'error');
+    }
+  };
+
+  const handleManageBilling = async () => {
+    try {
+      await api.openBillingPortal();
+    } catch (err: any) {
+      showToast(err.message || 'Could not open billing', 'error');
+    }
+  };
+
+  const handleToggleIncognito = async (enabled: boolean) => {
+    try {
+      const updated = await api.setIncognito(enabled);
+      if (updated) setCurrentUser(updated);
+      showToast(enabled ? 'Incognito on — only people you like can see you' : 'Incognito off', 'info');
+    } catch (err: any) {
+      if (isUpgradeError(err)) openPlans('incognito');
+      else showToast(err.message || 'Could not change incognito', 'error');
     }
   };
 
@@ -334,7 +535,8 @@ function ArrowApp() {
       showToast(`Connected with ${targetProfile.name}!`, 'success');
       refreshAppData();
     } catch (err: any) {
-      showToast(err.message || 'Could not send that arrow', 'error');
+      if (isUpgradeError(err)) openPlans('arrows');
+      else showToast(err.message || 'Could not send that arrow', 'error');
     }
   };
 
@@ -401,12 +603,12 @@ function ArrowApp() {
   };
 
   /**
-   * Photos are already persisted individually as they are uploaded or removed,
-   * so this only needs to commit the order and refresh the local copy.
+   * Uploads are saved as they finish; this applies removals and the new order,
+   * then reloads so the profile reflects what the server actually stored.
    */
-  const handleUpdatePhotos = async (photos: string[]) => {
+  const handleUpdatePhotos = async (keptRefs: string[], removedRefs: string[]) => {
     if (!currentUser) return;
-    setCurrentUser({ ...currentUser, photos });
+    await api.savePhotoChanges(keptRefs, removedRefs);
     const refreshed = await api.getMyProfile();
     if (refreshed) setCurrentUser(refreshed);
   };
@@ -456,13 +658,18 @@ function ArrowApp() {
     }
     storageService.setCurrentUserId(null);
     setCurrentUser(null);
-    showToast('Logged out to guest mode', 'info');
+    setPlanInfo(FREE_PLAN);
+    setMatches([]);
+    setIncomingLikes([]);
+    setHiddenLikes(0);
+    showToast('You have logged out', 'info');
   };
 
   const handleDeleteAccount = async () => {
     if (!currentUser) return;
     await api.deleteAccount();
     setCurrentUser(null);
+    setPlanInfo(FREE_PLAN);
     setIsSettingsOpen(false);
     showToast('Account deleted', 'info');
   };
@@ -483,6 +690,7 @@ function ArrowApp() {
     setIsOnboarding(false);
     setCurrentTab('discover');
     showToast(`Welcome to ARROW, ${newProfile.name}!`, 'success');
+    refreshAppData();
   };
 
   const hasActiveFilters = Boolean(
@@ -499,21 +707,14 @@ function ArrowApp() {
     discoverProfiles.length > cardIndex ? discoverProfiles[cardIndex] : null;
 
   return (
-    <div className="flex h-screen w-full bg-[var(--color-offwhite)] font-sans text-[var(--color-ink)] overflow-hidden select-none">
+    <div className="flex h-[100dvh] w-full bg-[var(--color-offwhite)] font-sans text-[var(--color-ink)] overflow-hidden">
       {/* Left Navigation Sidebar for Desktop (Professional Polish Theme) */}
       <aside className="hidden lg:flex w-72 bg-[var(--color-rail)] text-[var(--color-rail-ink)] flex-col justify-between py-10 px-8 shrink-0 z-20">
         {/* Brand Header */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 bg-[var(--color-arrow-orange)] flex items-center justify-center transform rotate-45 rounded-[3px] shadow-sm">
-              <div className="w-2 h-2 border-t-2 border-r-2 border-white transform -rotate-45 ml-[-1px] mt-[1px]" />
-            </div>
-            <span className="text-2xl font-bold tracking-tighter uppercase font-mono">
-              ARROW
-            </span>
-          </div>
-          <p className="text-[10px] text-white/40 tracking-widest uppercase font-medium pl-9">
-            Human Dating & Discovery
+        <div className="space-y-2">
+          <Logo size="md" inverted />
+          <p className="text-[10px] text-white/40 tracking-widest uppercase font-medium">
+            Dating with intention
           </p>
         </div>
 
@@ -553,9 +754,9 @@ function ArrowApp() {
               />
               <span>Likes</span>
             </div>
-            {incomingLikes.length > 0 && (
+            {incomingLikes.length + hiddenLikes > 0 && (
               <span className="px-2 py-0.5 rounded-full bg-[var(--color-arrow-orange)] text-white text-[10px] font-bold">
-                {incomingLikes.length}
+                {incomingLikes.length + hiddenLikes}
               </span>
             )}
           </button>
@@ -575,13 +776,17 @@ function ArrowApp() {
                   currentTab === 'matches' ? 'bg-[var(--color-arrow-orange)]' : 'bg-transparent'
                 }`}
               />
-              <span>Matches</span>
+              <span>Chats</span>
             </div>
-            {matches.length > 0 && (
+            {unreadTotal > 0 ? (
+              <span className="px-2 py-0.5 rounded-full bg-[var(--color-arrow-orange)] text-white text-[10px] font-bold">
+                {unreadTotal}
+              </span>
+            ) : matches.length > 0 ? (
               <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">
                 {matches.length}
               </span>
-            )}
+            ) : null}
           </button>
 
           <button
@@ -604,6 +809,31 @@ function ArrowApp() {
 
         {/* User Account / Safety & Support Links */}
         <div className="space-y-6 pt-6 border-t border-white/10">
+          {planInfo.plan === 'free' && (
+            <button
+              type="button"
+              onClick={() => openPlans('browse')}
+              className="w-full text-left p-4 rounded-2xl bg-gradient-to-br from-[var(--color-arrow-orange)] to-[#c43d1f] text-white space-y-1 hover:brightness-110 transition-all"
+            >
+              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest opacity-90">
+                <Zap size={12} /> ARROW Plus
+              </span>
+              <span className="block text-sm font-black leading-tight">
+                {!currentUser || planInfo.trialAvailable ? `Try it free for ${planInfo.trialDays} days` : 'See who likes you'}
+              </span>
+              <span className="block text-[11px] opacity-85">From KES 499/month · M-Pesa or card</span>
+            </button>
+          )}
+          {currentUser && planInfo.plan !== 'free' && (
+            <button
+              type="button"
+              onClick={() => openPlans('browse')}
+              className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[var(--color-gold-fill)]"
+            >
+              <Crown size={13} /> {planInfo.plan} member
+            </button>
+          )}
+
           {/* Active User / Guest Pill */}
           {currentUser ? (
             <div
@@ -659,7 +889,30 @@ function ArrowApp() {
                 Settings & Privacy
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => openPlans('browse')}
+              className="block text-xs text-stone-400 hover:text-white transition-colors cursor-pointer py-0.5"
+            >
+              Plans & pricing
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModal({ isOpen: true, type: 'terms' })}
+              className="block text-xs text-stone-400 hover:text-white transition-colors cursor-pointer py-0.5"
+            >
+              Terms
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalModal({ isOpen: true, type: 'privacy' })}
+              className="block text-xs text-stone-400 hover:text-white transition-colors cursor-pointer py-0.5"
+            >
+              Privacy
+            </button>
           </div>
+
+          <CreatedByEden inverted />
         </div>
       </aside>
 
@@ -673,6 +926,8 @@ function ArrowApp() {
           hasActiveFilters={hasActiveFilters}
           onOpenSafety={() => setLegalModal({ isOpen: true, type: 'safety' })}
           onOpenAuth={() => setIsAuthModalOpen(true)}
+          plan={planInfo.plan}
+          onOpenPlans={() => openPlans('browse')}
         />
 
         {/* Tab View Container */}
@@ -688,7 +943,7 @@ function ArrowApp() {
                   </p>
                 </div>
               ) : currentDiscoverProfile ? (
-                <div className="w-full max-w-lg flex flex-col justify-center my-auto">
+                <div className="w-full max-w-md flex flex-col justify-center my-auto pb-4">
                   <ProfileCard
                     profile={currentDiscoverProfile}
                     onLike={() => handleLike(currentDiscoverProfile)}
@@ -698,16 +953,45 @@ function ArrowApp() {
                     onOpenDetail={() => setDetailProfile(currentDiscoverProfile)}
                     onReport={() => setReportTarget(currentDiscoverProfile)}
                     isAnimating={cardAnimation}
-                    canRewind={Boolean(currentUser) && cardIndex > 0}
+                    canRewind={Boolean(currentUser)}
                     superRemaining={quota?.superRemaining ?? 0}
                   />
 
-                  {quota && quota.arrowsRemaining <= 10 && (
-                    <p className="mt-3 text-center text-[11px] text-[var(--color-stone-dark)]">
+                  {quota && !quota.arrowsUnlimited && quota.arrowsRemaining <= 10 && (
+                    <button
+                      type="button"
+                      onClick={() => openPlans('arrows')}
+                      className="mt-3 mx-auto block text-center text-[11px] text-[var(--color-stone-dark)] hover:text-[var(--color-arrow-orange-text)]"
+                    >
                       {quota.arrowsRemaining > 0
-                        ? `${quota.arrowsRemaining} arrows left today`
-                        : 'You have used all your arrows today. More tomorrow.'}
-                    </p>
+                        ? `${quota.arrowsRemaining} arrows left today · Go unlimited with Plus`
+                        : 'Out of arrows for today · Get unlimited with Plus'}
+                    </button>
+                  )}
+
+                  {currentUser && (
+                    <div className="mt-3 flex justify-center">
+                      {planInfo.boostActiveUntil && new Date(planInfo.boostActiveUntil) > new Date() ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--color-gold-subtle)] text-[var(--color-gold)] text-[11px] font-black">
+                          <Rocket size={13} />
+                          Boosted until {new Date(planInfo.boostActiveUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleBoost}
+                          disabled={planInfo.features.boost && planInfo.boostsRemaining <= 0}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-[11px] font-bold text-[var(--color-ink)] hover:border-[var(--color-gold-fill)] disabled:opacity-50 transition-colors"
+                        >
+                          <Rocket size={13} className="text-[var(--color-gold)]" />
+                          {planInfo.features.boost
+                            ? planInfo.boostsRemaining > 0
+                              ? 'Boost me for 30 min'
+                              : 'Next boost next week'
+                            : 'Boost · Premium'}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : (
@@ -774,6 +1058,8 @@ function ArrowApp() {
             <section aria-label="Likes Section" className="max-w-2xl w-full mx-auto p-4 md:p-6">
               <LikesList
                 likes={incomingLikes}
+                hiddenCount={hiddenLikes}
+                onUpgrade={() => openPlans('likes')}
                 isGuest={!currentUser}
                 onOpenAuth={() => setIsAuthModalOpen(true)}
                 onLikeBack={handleLikeBackFromLikes}
@@ -809,6 +1095,8 @@ function ArrowApp() {
                 onEditWhatsApp={() => setIsWhatsAppOpen(true)}
                 onOpenSettings={() => setIsSettingsOpen(true)}
                 onOpenAuth={() => setIsAuthModalOpen(true)}
+                planInfo={planInfo}
+                onOpenPlans={() => openPlans('browse')}
               />
             </section>
           )}
@@ -818,8 +1106,8 @@ function ArrowApp() {
         <BottomNav
           currentTab={currentTab}
           onSelectTab={(tab) => setCurrentTab(tab)}
-          likesCount={incomingLikes.length}
-          matchesCount={matches.length}
+          likesCount={incomingLikes.length + hiddenLikes}
+          unreadCount={unreadTotal}
         />
       </main>
 
@@ -961,6 +1249,7 @@ function ArrowApp() {
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         currentUser={currentUser}
+        onAuthenticated={handleAuthenticated}
         onSelectProfile={(profile) => {
           storageService.setCurrentUserId(profile.id);
           setCurrentUser(profile);
@@ -974,6 +1263,11 @@ function ArrowApp() {
         onLogOut={() => {
           handleLogOut();
           setIsAuthModalOpen(false);
+        }}
+        onOpenLegal={(type) => setLegalModal({ isOpen: true, type })}
+        onOpenPlans={() => {
+          setIsAuthModalOpen(false);
+          openPlans('browse');
         }}
       />
 
@@ -1055,7 +1349,12 @@ function ArrowApp() {
         onClose={() => setSelectedMatch(null)}
         onUnmatch={handleUnmatch}
         onReport={(profile) => setReportTarget(profile)}
-        onConversationRead={refreshAppData}
+        // Only the inbox: refreshing everything here would reshuffle the deck
+        // every time a message is read.
+        onConversationRead={refreshInbox}
+        currentUserId={currentUser?.id ?? null}
+        hasReadReceipts={planInfo.features.readReceipts}
+        onUpgrade={() => openPlans('receipts')}
       />
 
       {/* Filters Bottom Sheet */}
@@ -1078,6 +1377,11 @@ function ArrowApp() {
           });
           showToast('Filters reset to default', 'info');
         }}
+        canUseAdvanced={planInfo.features.advancedFilters}
+        onUpgrade={() => {
+          setIsFilterOpen(false);
+          openPlans('filters');
+        }}
       />
 
       {/* Edit Profile Modal */}
@@ -1095,7 +1399,11 @@ function ArrowApp() {
         <EditPhotosModal
           currentUser={currentUser}
           isOpen={isEditPhotosOpen}
-          onClose={() => setIsEditPhotosOpen(false)}
+          onClose={() => {
+            setIsEditPhotosOpen(false);
+            // Uploads save immediately, so pick them up even after Cancel.
+            api.getMyProfile().then((p) => p && setCurrentUser(p));
+          }}
           onUpdatePhotos={handleUpdatePhotos}
         />
       )}
@@ -1139,6 +1447,10 @@ function ArrowApp() {
           }}
           onTogglePause={handleTogglePause}
           onToggleOnlineStatus={handleToggleOnlineStatus}
+          planInfo={planInfo}
+          onOpenPlans={() => openPlans('browse')}
+          onManageBilling={handleManageBilling}
+          onToggleIncognito={handleToggleIncognito}
         />
       )}
 
@@ -1153,6 +1465,34 @@ function ArrowApp() {
         isOpen={Boolean(reportTarget)}
         onClose={() => setReportTarget(null)}
         onSubmitReport={handleSubmitReport}
+      />
+
+      <PlansModal
+        isOpen={plansReason !== null}
+        onClose={() => setPlansReason(null)}
+        reason={plansReason ?? 'browse'}
+        planInfo={planInfo}
+        isGuest={!currentUser}
+        onStartTrial={handleStartTrial}
+        onChoosePlan={handleChoosePlan}
+        onManageBilling={handleManageBilling}
+        onCancelRenewal={handleCancelRenewal}
+        onSignUp={() => {
+          setPlansReason(null);
+          setIsAuthModalOpen(true);
+        }}
+        onOpenLegal={(type) => setLegalModal({ isOpen: true, type })}
+      />
+
+      <SuperArrowModal
+        target={superTarget}
+        superRemaining={quota?.superRemaining ?? 0}
+        onClose={() => setSuperTarget(null)}
+        onSend={async (note) => {
+          const target = superTarget;
+          setSuperTarget(null);
+          if (target) await handleLike(target, true, note);
+        }}
       />
 
       {/* Legal & Safety Guidelines Modal */}

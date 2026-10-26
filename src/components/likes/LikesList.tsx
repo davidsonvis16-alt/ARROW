@@ -2,11 +2,14 @@ import React from 'react';
 import { UserProfile } from '../../types';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
-import { Heart, Compass, MapPin, ArrowLeft, ArrowRight, ShieldAlert, Star } from 'lucide-react';
+import { Heart, Compass, MapPin, ArrowLeft, ArrowRight, ShieldAlert, Star, Lock, Quote } from 'lucide-react';
 import { LikeEntry } from '../../types';
 
 interface LikesListProps {
   likes: LikeEntry[];
+  /** Likes the server counted but did not identify (free plan). */
+  hiddenCount?: number;
+  onUpgrade?: () => void;
   isGuest?: boolean;
   onOpenAuth?: () => void;
   onLikeBack: (targetProfile: UserProfile) => void;
@@ -18,6 +21,8 @@ interface LikesListProps {
 
 export const LikesList: React.FC<LikesListProps> = ({
   likes,
+  hiddenCount = 0,
+  onUpgrade,
   isGuest = false,
   onOpenAuth,
   onLikeBack,
@@ -53,6 +58,52 @@ export const LikesList: React.FC<LikesListProps> = ({
     );
   }
 
+  // The teaser is drawn from nothing but a number: the server sends no names,
+  // photos or ids for hidden likes, so these tiles are generic placeholders,
+  // not blurred versions of real people.
+  const lockedCard =
+    hiddenCount > 0 ? (
+      <div className="relative overflow-hidden rounded-[28px] border-2 border-[var(--color-arrow-orange)] bg-[var(--color-surface)] p-5 shadow-xs">
+        <div className="grid grid-cols-4 gap-2 mb-4" aria-hidden="true">
+          {Array.from({ length: Math.min(hiddenCount, 4) }).map((_, i) => (
+            <div
+              key={i}
+              className="aspect-[3/4] rounded-2xl blur-[2px]"
+              style={{
+                background: `linear-gradient(${140 + i * 30}deg, hsl(${(i * 47 + 12) % 360} 55% 62%), hsl(${(i * 47 + 52) % 360} 45% 38%))`,
+              }}
+            />
+          ))}
+        </div>
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 shrink-0 rounded-2xl bg-[var(--color-arrow-orange-subtle)] text-[var(--color-arrow-orange-text)] flex items-center justify-center">
+            <Lock size={18} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-black text-[var(--color-ink)] tracking-tight">
+              {hiddenCount} {hiddenCount === 1 ? 'person likes' : 'people like'} you
+            </h3>
+            <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed">
+              Keep swiping and you may meet them in Discover — or see them all now with Plus.
+            </p>
+          </div>
+        </div>
+        {onUpgrade && (
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="mt-4 w-full py-3 rounded-[var(--radius-pill)] bg-[var(--color-arrow-orange)] hover:bg-[var(--color-arrow-orange-hover)] text-white text-sm font-black active:scale-[0.98] transition-all"
+          >
+            See who likes you
+          </button>
+        )}
+      </div>
+    ) : null;
+
+  if (likes.length === 0 && hiddenCount > 0) {
+    return <div className="space-y-4 pb-24">{lockedCard}</div>;
+  }
+
   if (likes.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4 min-h-[60vh]">
@@ -82,20 +133,22 @@ export const LikesList: React.FC<LikesListProps> = ({
   }
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4 pb-24">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-black text-[var(--color-ink)] tracking-tight font-sans">
             Interested in You
           </h2>
           <p className="text-xs text-[var(--color-stone-dark)] font-medium">
-            {likes.length} {likes.length === 1 ? 'person' : 'people'} sent you an arrow
+            {likes.length + hiddenCount} {likes.length + hiddenCount === 1 ? 'person' : 'people'} sent you an arrow
           </p>
         </div>
       </div>
 
+      {lockedCard}
+
       <div className="grid grid-cols-1 gap-4">
-        {likes.map(({ profile, isSuper }) => {
+        {likes.map(({ profile, isSuper, note }) => {
           const photo = profile.photos[0];
           const monogramHue = profile.name
             .split('')
@@ -134,7 +187,7 @@ export const LikesList: React.FC<LikesListProps> = ({
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
                 {isSuper && (
-                  <div className="absolute top-3.5 left-3.5 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--color-forest)] text-white text-[10px] font-bold uppercase tracking-wider">
+                  <div className="absolute top-3.5 left-3.5 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--color-forest)] text-[var(--color-offwhite)] text-[10px] font-bold uppercase tracking-wider">
                     <Star size={11} />
                     <span>Super arrow</span>
                   </div>
@@ -171,6 +224,12 @@ export const LikesList: React.FC<LikesListProps> = ({
 
               {/* Bio & Details */}
               <div className="p-5 space-y-3.5">
+                {note && (
+                  <div className="flex gap-2 p-3 rounded-2xl bg-[var(--color-forest-subtle)] border border-[var(--color-border-subtle)]">
+                    <Quote size={14} className="shrink-0 mt-0.5 text-[var(--color-forest)]" />
+                    <p className="text-sm text-[var(--color-ink)] leading-snug">{note}</p>
+                  </div>
+                )}
                 {profile.bio && (
                   <p className="text-xs text-[var(--color-ink-soft)] line-clamp-2 leading-relaxed font-normal">
                     {profile.bio}

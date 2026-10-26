@@ -15,6 +15,9 @@ interface MatchDetailModalProps {
   onUnmatch: (matchId: string, partnerName: string) => void;
   onReport: (profile: UserProfile) => void;
   onConversationRead?: () => void;
+  currentUserId: string | null;
+  hasReadReceipts?: boolean;
+  onUpgrade?: () => void;
 }
 
 export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
@@ -24,6 +27,9 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
   onUnmatch,
   onReport,
   onConversationRead,
+  currentUserId,
+  hasReadReceipts,
+  onUpgrade,
 }) => {
   const { showToast } = useToast();
   const [loadingWhatsApp, setLoadingWhatsApp] = useState(false);
@@ -114,7 +120,13 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
         {tab === 'chat' ? (
           <div className="space-y-3">
-            <ChatPanel match={matchItem} onMessageSent={onConversationRead} />
+            <ChatPanel
+              match={matchItem}
+              currentUserId={currentUserId}
+              hasReadReceipts={hasReadReceipts}
+              onMessageSent={onConversationRead}
+              onUpgrade={onUpgrade}
+            />
 
             {profile.allowWhatsApp ? (
               <div className="p-3 bg-[var(--color-surface-subtle)] rounded-[var(--radius-card-sm)] border border-[var(--color-border-subtle)] space-y-2">
@@ -200,7 +212,11 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         <div className="pt-3 border-t border-[var(--color-border-subtle)] flex items-center justify-between gap-3">
           <button
             type="button"
-            onClick={() => onUnmatch(matchItem.id, profile.name)}
+            onClick={() => {
+              if (window.confirm(`Unmatch ${profile.name}? Your conversation will be deleted for both of you.`)) {
+                onUnmatch(matchItem.id, profile.name);
+              }
+            }}
             className="flex-1 py-2 px-3 rounded-[var(--radius-input)] border border-[var(--color-border)] text-xs font-bold text-[var(--color-stone-dark)] hover:text-[var(--color-danger-text)] hover:bg-[var(--color-danger-subtle)] transition-colors flex items-center justify-center gap-1.5"
           >
             <UserX size={14} />

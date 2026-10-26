@@ -1,98 +1,126 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { UserProfile } from '../../types';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { api } from '../../services/api';
 import { useToast } from '../ui/Toast';
-import { Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, ImagePlus, Star, Trash2 } from 'lucide-react';
 
 interface EditPhotosModalProps {
   currentUser: UserProfile;
   isOpen: boolean;
   onClose: () => void;
-  onUpdatePhotos: (photos: string[]) => Promise<void>;
+  /** Called with the final order and anything removed, after the user saves. */
+  onUpdatePhotos: (keptRefs: string[], removedRefs: string[]) => Promise<void>;
 }
 
+interface PhotoItem {
+  url: string;
+  ref: string;
+}
+
+const MAX_PHOTOS = 6;
+
+function itemsFrom(user: UserProfile): PhotoItem[] {
+  return (user.photos || []).map((url, i) => ({ url, ref: user.photoRefs?.[i] ?? url }));
+}
+
+/**
+ * Add, remove and reorder profile photos.
+ *
+ * Uploads are saved the moment they finish (so a slow upload is never lost to
+ * a closed sheet). Removals and the new order are applied together on Save,
+ * using each photo's stored reference rather than its display URL — the URL is
+ * a signed link that expires, the reference is what the server knows.
+ *
+ * Every control is always visible: phones have no hover, so actions hidden
+ * behind one are actions half your users cannot reach.
+ */
 export const EditPhotosModal: React.FC<EditPhotosModalProps> = ({
   currentUser,
   isOpen,
   onClose,
   onUpdatePhotos,
 }) => {
-  const [photos, setPhotos] = useState<string[]>(currentUser.photos || []);
-  const [isUploading, setIsUploading] = useState(false);
+  const [items, setItems] = useState<PhotoItem[]>(() => itemsFrom(currentUser));
+  const [removed, setRemoved] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    if (photos.length >= 6) {
-      showToast('Maximum 6 photos allowed', 'warning');
+  useEffect(() => {
+    if (isOpen) {
+      setItems(itemsFrom(currentUser));
+      setRemoved([]);
+    }
+    // Reset only when the sheet opens, not on every profile refresh behind it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  const addFiles = async (fileList: FileList | File[]) => {
+    const room = MAX_PHOTOS - items.length;
+    const files = Array.from(fileList).slice(0, Math.max(0, room));
+    if (files.length === 0) {
+      showToast(`You can have up to ${MAX_PHOTOS} photos`, 'warning');
       return;
     }
 
-    const file = files[0];
-    setIsUploading(true);
-    try {
-      const photoUrl = await api.uploadPhoto(file, currentUser.id);
-      setPhotos([...photos, photoUrl]);
-      showToast('Photo uploaded successfully', 'success');
-    } catch (err: any) {
-      showToast(err.message || 'Failed to upload photo', 'error');
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+    setUploading((n) => n + files.length);
+    for (const file of files) {
+      try {
+        const uploaded = await api.uploadPhoto(file, currentUser.id);
+        setItems((prev) => [...prev, uploaded]);
+      } catch (err: any) {
+        showToast(err.message || `Could not upload ${file.name}`, 'error');
+      } finally {
+        setUploading((n) => n - 1);
+      }
     }
   };
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    if (photos.length >= 6) return;
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    try {
-      const photoUrl = await api.uploadPhoto(file, currentUser.id);
-      setPhotos([...photos, photoUrl]);
-      showToast('Photo uploaded successfully', 'success');
-    } catch (err: any) {
-      showToast(err.message || 'Failed to upload photo', 'error');
-    } finally {
-      setIsUploading(false);
-    }
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addFiles(e.target.files);
+    e.target.value = '';
   };
 
   const handleRemove = (index: number) => {
-    if (photos.length <= 1) {
-      showToast('You must have at least one profile photo', 'warning');
+    if (items.length <= 1) {
+      showToast('Keep at least one photo so people can see you', 'warning');
       return;
     }
-    setPhotos(photos.filter((_, i) => i !== index));
+    setRemoved((prev) => [...prev, items[index].ref]);
+    setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleMakeMain = (index: number) => {
-    if (index === 0) return;
-    const item = photos[index];
-    const rest = photos.filter((_, i) => i !== index);
-    setPhotos([item, ...rest]);
-    showToast('Primary profile photo updated', 'info');
+  const move = (index: number, to: number) => {
+    if (to < 0 || to >= items.length) return;
+    setItems((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(index, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onUpdatePhotos(photos);
+      await onUpdatePhotos(
+        items.map((i) => i.ref),
+        removed
+      );
       showToast('Photos saved', 'success');
       onClose();
-    } catch (err) {
-      showToast('Failed to save photos', 'error');
+    } catch (err: any) {
+      showToast(err.message || 'Could not save your photos', 'error');
     } finally {
       setIsSaving(false);
     }
   };
+
+  const isBusy = uploading > 0 || isSaving;
 
   return (
     <Modal
@@ -100,116 +128,145 @@ export const EditPhotosModal: React.FC<EditPhotosModalProps> = ({
       onClose={onClose}
       variant="bottomSheet"
       maxWidth="md"
-      title="Manage Photos"
-      subtitle="The first photo will be your primary discovery card"
+      title="Your photos"
+      subtitle="Your first photo is the one people see first"
     >
-      <div className="space-y-6 pb-4">
-        {/* Photo Grid */}
-        <div className="grid grid-cols-3 gap-3">
-          {photos.map((url, idx) => (
+      <div className="space-y-5 pb-2">
+        <div className="grid grid-cols-3 gap-2.5">
+          {items.map((item, idx) => (
             <div
-              key={idx}
-              className={`relative aspect-[3/4] rounded-2xl overflow-hidden bg-[var(--color-stone-light)] border-2 group ${
-                idx === 0 ? 'border-[var(--color-arrow-orange)]' : 'border-[var(--color-border-subtle)]'
+              key={item.ref}
+              className={`relative aspect-[3/4] rounded-2xl overflow-hidden bg-[var(--color-stone-light)] border-2 ${
+                idx === 0 ? 'border-[var(--color-arrow-orange)]' : 'border-transparent'
               }`}
             >
               <img
-                src={url}
+                src={item.url}
                 alt={`Photo ${idx + 1}`}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
 
-              {/* Main Badge */}
               {idx === 0 && (
-                <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md bg-[var(--color-arrow-orange)] text-white text-[9px] font-black uppercase tracking-wider">
+                <div className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[var(--color-arrow-orange)] text-white text-[9px] font-black uppercase tracking-wider">
+                  <Star size={9} fill="currentColor" />
                   Main
                 </div>
               )}
 
-              {/* Photo Actions Overlay */}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(idx)}
-                    className="p-1 rounded-lg bg-black/60 text-white hover:bg-[var(--color-danger)] transition-colors"
-                    title="Delete photo"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
+              <button
+                type="button"
+                onClick={() => handleRemove(idx)}
+                className="absolute top-1.5 right-1.5 w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center backdrop-blur-sm active:scale-95 transition-transform"
+                aria-label={`Remove photo ${idx + 1}`}
+              >
+                <Trash2 size={14} />
+              </button>
 
-                {idx !== 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleMakeMain(idx)}
-                    className="py-1 px-2 rounded-lg bg-[var(--color-surface)] text-[var(--color-ink)] text-[10px] font-bold flex items-center justify-center hover:bg-[var(--color-stone-light)] transition-colors"
-                  >
-                    <span>Set Main</span>
-                  </button>
-                )}
+              <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => move(idx, idx - 1)}
+                  disabled={idx === 0}
+                  className="w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center backdrop-blur-sm disabled:opacity-0 active:scale-95 transition-transform"
+                  aria-label={`Move photo ${idx + 1} earlier`}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(idx, idx + 1)}
+                  disabled={idx === items.length - 1}
+                  className="w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center backdrop-blur-sm disabled:opacity-0 active:scale-95 transition-transform"
+                  aria-label={`Move photo ${idx + 1} later`}
+                >
+                  <ChevronRight size={16} />
+                </button>
               </div>
             </div>
           ))}
 
-          {/* Upload Placeholder Slot if < 6 */}
-          {photos.length < 6 && (
+          {Array.from({ length: Math.min(uploading, MAX_PHOTOS - items.length) }).map((_, i) => (
             <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className="aspect-[3/4] rounded-2xl border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] hover:bg-[var(--color-surface-subtle)]/80 hover:border-[var(--color-ink)] transition-colors flex flex-col items-center justify-center p-3 text-center cursor-pointer"
+              key={`uploading-${i}`}
+              className="aspect-[3/4] rounded-2xl bg-[var(--color-surface-subtle)] border-2 border-dashed border-[var(--color-border)] flex flex-col items-center justify-center gap-2"
             >
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-              />
-              <div className="p-2.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-[var(--color-ink)] mb-1.5 shadow-xs">
-                {isUploading ? (
-                  <div className="w-4 h-4 border-2 border-[var(--color-arrow-orange)] border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Upload size={16} />
-                )}
-              </div>
-              <span className="text-[11px] font-bold text-[var(--color-ink)]">
-                {isUploading ? 'Uploading...' : 'Add Photo'}
-              </span>
-              <span className="text-[9px] text-[var(--color-stone-dark)] mt-0.5">
-                Drop or click
-              </span>
+              <div className="w-5 h-5 border-2 border-[var(--color-arrow-orange)] border-t-transparent rounded-full animate-spin" />
+              <span className="text-[10px] font-bold text-[var(--color-stone-dark)]">Uploading</span>
             </div>
+          ))}
+
+          {items.length + uploading < MAX_PHOTOS && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                addFiles(e.dataTransfer.files);
+              }}
+              className="aspect-[3/4] rounded-2xl border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] hover:border-[var(--color-arrow-orange)] transition-colors flex flex-col items-center justify-center gap-1.5 text-[var(--color-ink)]"
+            >
+              <ImagePlus size={20} className="text-[var(--color-arrow-orange-text)]" />
+              <span className="text-[11px] font-bold">Add photo</span>
+              <span className="text-[10px] text-[var(--color-stone-dark)]">
+                {MAX_PHOTOS - items.length - uploading} left
+              </span>
+            </button>
           )}
         </div>
 
-        {/* Info */}
-        <div className="p-3 bg-[var(--color-surface-subtle)] rounded-xl border border-[var(--color-border-subtle)] flex items-start gap-2.5 text-xs text-[var(--color-stone-dark)]">
-          <ImageIcon size={16} className="text-[var(--color-forest)] shrink-0 mt-0.5" />
-          <p className="leading-tight">
-            High quality portraits with natural lighting make the strongest impression. You can upload up to 6 photos.
-          </p>
-        </div>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          className="hidden"
+        />
+        <input
+          type="file"
+          ref={cameraInputRef}
+          onChange={handleFileChange}
+          accept="image/*"
+          capture="user"
+          className="hidden"
+        />
 
-        {/* Buttons */}
-        <div className="flex items-center gap-3 pt-3 border-t border-[var(--color-border-subtle)]">
+        <div className="grid grid-cols-2 gap-2.5">
           <Button
-            variant="ghost"
-            fullWidth
-            onClick={onClose}
+            variant="outline"
+            size="sm"
+            icon={<ImagePlus size={14} />}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={items.length + uploading >= MAX_PHOTOS}
           >
-            Cancel
+            From gallery
           </Button>
           <Button
-            variant="primary"
-            fullWidth
-            onClick={handleSave}
-            disabled={isSaving || isUploading}
-            arrow="right"
+            variant="outline"
+            size="sm"
+            icon={<Camera size={14} />}
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={items.length + uploading >= MAX_PHOTOS}
           >
-            {isSaving ? 'Saving...' : 'Save Photos'}
+            Take a selfie
+          </Button>
+        </div>
+
+        <p className="text-[11px] text-[var(--color-stone-dark)] leading-relaxed">
+          Use clear, recent photos of you alone in your main photo. Photos are resized and
+          stripped of location data on your device before they upload. Photos of other people
+          without their consent, of minors, or that are sexual or violent break our Terms and
+          will be removed.
+        </p>
+
+        <div className="flex items-center gap-3 pt-3 border-t border-[var(--color-border-subtle)]">
+          <Button variant="ghost" fullWidth onClick={onClose} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button variant="primary" fullWidth onClick={handleSave} disabled={isBusy}>
+            {isSaving ? 'Saving…' : uploading > 0 ? 'Uploading…' : 'Save'}
           </Button>
         </div>
       </div>

@@ -311,12 +311,17 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
         <button
           type="button"
           onClick={onSuperLike}
-          disabled={!onSuperLike || superRemaining <= 0}
-          className="w-12 h-12 rounded-full bg-[var(--color-forest)] text-white flex items-center justify-center transition-all hover:brightness-125 disabled:opacity-35 disabled:cursor-not-allowed active:scale-95 relative"
+          disabled={!onSuperLike}
+          className={`w-12 h-12 rounded-full bg-[var(--color-forest)] text-[var(--color-offwhite)] flex items-center justify-center transition-all hover:brightness-125 disabled:opacity-35 disabled:cursor-not-allowed active:scale-95 relative ${
+            superRemaining <= 0 ? 'opacity-60' : ''
+          }`}
           aria-label={`Send a super arrow to ${profile.name}, ${superRemaining} left today`}
           title={superRemaining > 0 ? `Super arrow — ${superRemaining} left today` : 'No super arrows left today'}
         >
           <Star size={18} />
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--color-surface)] text-[var(--color-forest)] border border-[var(--color-border)] text-[10px] font-black leading-[16px] text-center">
+            {superRemaining}
+          </span>
         </button>
 
         <button
@@ -330,7 +335,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
         </button>
       </div>
 
-      <p className="text-center text-[11px] text-[var(--color-stone-dark)]">
+      <p className="hidden md:block text-center text-[11px] text-[var(--color-stone-dark)]">
         Use <kbd className="arrow-kbd">←</kbd> pass, <kbd className="arrow-kbd">→</kbd> arrow,{' '}
         <kbd className="arrow-kbd">↑</kbd> super, <kbd className="arrow-kbd">i</kbd> details
       </p>

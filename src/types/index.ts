@@ -28,7 +28,14 @@ export interface UserProfile {
   gender: 'woman' | 'man' | 'non-binary';
   location: string;
   bio: string;
+  /** Displayable URLs (short-lived signed URLs on Supabase). */
   photos: string[];
+  /**
+   * Yours only: the stored reference behind each entry in `photos`, in the
+   * same order. Deleting or reordering needs these — a signed URL expires and
+   * is not what the server stores.
+   */
+  photoRefs?: string[];
   interests: string[];
   lookingFor: string;
   prompts: PromptItem[];
@@ -42,6 +49,10 @@ export interface UserProfile {
   lastActiveAt?: string | null;
   isPaused?: boolean;
   showOnlineStatus?: boolean;
+  /** Yours only: whether incognito is on and actually in effect. */
+  isIncognito?: boolean;
+  /** Yours only: the plan the server says you are on right now. */
+  plan?: PlanId;
 }
 
 export interface LikeRecord {
@@ -56,7 +67,20 @@ export interface LikeRecord {
 export interface LikeEntry {
   profile: UserProfile;
   isSuper: boolean;
+  /** Optional note sent with a super arrow (Plus and Premium). */
+  note?: string | null;
   createdAt: string;
+}
+
+/**
+ * What the server chose to reveal about who liked you. On the free plan only
+ * super arrows arrive as entries; everyone else is just a number, because the
+ * server never sends their identity.
+ */
+export interface LikesInbox {
+  entries: LikeEntry[];
+  hiddenCount: number;
+  locked: boolean;
 }
 
 export interface MessagePreview {
@@ -85,16 +109,73 @@ export interface ChatMessage {
   body: string;
   isMine: boolean;
   createdAt: string;
+  /**
+   * For your own messages this is a read receipt and only arrives on Premium.
+   * For theirs it is when you read it.
+   */
   readAt: string | null;
+  reaction?: MessageReaction | null;
 }
 
+/** Mirrors check_arrow_message_reaction in supabase/schema.sql. */
+export const MESSAGE_REACTIONS = ['❤️', '😂', '😮', '😢', '👍', '🔥'] as const;
+export type MessageReaction = (typeof MESSAGE_REACTIONS)[number];
+
 export interface LikeQuota {
+  plan?: PlanId;
   arrowsUsed: number;
   arrowsLimit: number;
   arrowsRemaining: number;
+  arrowsUnlimited?: boolean;
   superUsed: number;
   superLimit: number;
   superRemaining: number;
+  rewindsRemaining?: number;
+  rewindsUnlimited?: boolean;
+}
+
+export type PlanId = 'free' | 'plus' | 'premium';
+
+export interface PlanFeatures {
+  seeLikes: boolean;
+  advancedFilters: boolean;
+  arrowNotes: boolean;
+  readReceipts: boolean;
+  incognito: boolean;
+  boost: boolean;
+}
+
+/** Mirrors arrow_get_my_plan. Every flag here is enforced server-side too. */
+export type PaymentMethod = 'card' | 'mpesa';
+
+export interface PlanInfo {
+  plan: PlanId;
+  status: 'inactive' | 'trialing' | 'active' | 'past_due' | 'canceled';
+  source: 'none' | 'trial' | 'card' | 'mpesa' | 'grant';
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  /** How the current paid plan is paid for; null on free or trial. */
+  paymentMethod: PaymentMethod | null;
+  /** True only for a card plan that will charge again automatically. */
+  renews: boolean;
+  canManageBilling: boolean;
+  trialAvailable: boolean;
+  trialDays: number;
+  features: PlanFeatures;
+  boostActiveUntil: string | null;
+  boostsRemaining: number;
+}
+
+/** One successful payment, as shown in the receipts list. */
+export interface PaymentRecord {
+  reference: string;
+  plan: Exclude<PlanId, 'free'>;
+  method: PaymentMethod;
+  amountMinor: number;
+  currency: string;
+  /** For an M-Pesa pass: the end of the time this payment bought. */
+  coversUntil: string | null;
+  paidAt: string;
 }
 
 export interface LikeResult {

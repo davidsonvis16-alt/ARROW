@@ -15,7 +15,17 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   '42501': 'That is not available to you.',
   '53400': 'You have hit a limit. Try again a little later.',
   '22023': 'That value was not accepted.',
+  'P0402': 'That is part of an ARROW membership.',
 };
+
+/** Raised by the schema when a feature needs a higher plan. */
+export const UPGRADE_REQUIRED = 'P0402';
+/** Raised by the schema when a daily or hourly allowance is used up. */
+export const LIMIT_REACHED = '53400';
+
+export function isUpgradeError(err: unknown): boolean {
+  return err instanceof ArrowApiError && (err.code === UPGRADE_REQUIRED || err.code === LIMIT_REACHED);
+}
 
 export class ArrowApiError extends Error {
   readonly code?: string;

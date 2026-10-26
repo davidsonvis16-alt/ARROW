@@ -7,6 +7,7 @@ import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { authService } from '../../services/authService';
 import { profileService } from '../../services/profileService';
 import { useToast } from '../ui/Toast';
+import { Logo } from '../brand/Logo';
 import {
   ShieldAlert,
   Camera,
@@ -91,7 +92,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   // Step 5: Bio, Looking for & Interests
   const [bio, setBio] = useState('');
   const [lookingFor, setLookingFor] = useState('Meaningful dating');
-  const [interests, setInterests] = useState<string[]>(['Architecture', 'Coffee']);
+  // Nothing pre-selected: every interest on a profile should be one the person chose.
+  const [interests, setInterests] = useState<string[]>([]);
+  const [promptAnswer, setPromptAnswer] = useState('');
 
   // Step 6: WhatsApp Option & Completion
   const [allowWhatsApp, setAllowWhatsApp] = useState(false);
@@ -335,12 +338,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     if (!existingAuthUserId) return;
     setIsSubmitting(true);
     try {
+      // Photos first, and failures are reported rather than swallowed: a
+      // profile that silently ends up with no picture never gets a match.
+      let uploaded = 0;
       for (const file of selectedFiles) {
         try {
           await profileService.uploadProfilePhoto(existingAuthUserId, file);
-        } catch (uploadErr) {
-          console.warn('Photo upload warning:', uploadErr);
+          uploaded += 1;
+        } catch (uploadErr: any) {
+          showToast(`${file.name || 'A photo'} did not upload: ${uploadErr?.message || 'unknown error'}`, 'warning');
         }
+      }
+      if (selectedFiles.length > 0 && uploaded === 0) {
+        throw new Error('None of your photos uploaded. Check your connection and try again — at least one photo is required.');
       }
 
       await profileService.updateProfile({
@@ -350,13 +360,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         bio: bio.trim(),
         interests,
         lookingFor,
-        prompts: [
-          {
-            id: 'p1',
-            question: 'A perfect Sunday looks like...',
-            answer: 'Exploring quiet coffee spots and listening to vinyl records.',
-          },
-        ],
+        // Only the person's own words ever go on their profile.
+        prompts: promptAnswer.trim()
+          ? [{ id: 'p1', question: 'A perfect Sunday looks like...', answer: promptAnswer.trim() }]
+          : [],
       });
 
       if (allowWhatsApp && whatsappNumber.trim()) {
@@ -380,13 +387,11 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-between p-6 max-w-sm mx-auto w-full min-h-screen">
+    <div className="flex-1 flex flex-col justify-between px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] max-w-sm mx-auto w-full min-h-[100dvh]">
       {/* Top Brand & Progress */}
       <div className="space-y-4 pt-2">
         <div className="flex items-center justify-between">
-          <div className="brand-wordmark text-lg">
-            ARROW <span className="brand-arrow-glyph">→</span>
-          </div>
+          <Logo size="sm" />
           <span className="text-xs font-bold text-[var(--color-stone-dark)]">
             Step {step} of {totalSteps}
           </span>
@@ -796,7 +801,23 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                 placeholder="A couple sentences introducing yourself..."
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)] resize-none"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-[16px] sm:text-xs text-[var(--color-ink)] resize-none"
+              />
+            </div>
+
+            {/* One prompt, in their own words. Gives matches something to reply to. */}
+            <div className="space-y-1.5">
+              <label htmlFor="onboarding-prompt" className="text-xs font-bold text-[var(--color-ink)]">
+                A perfect Sunday looks like… (Optional)
+              </label>
+              <textarea
+                id="onboarding-prompt"
+                rows={2}
+                maxLength={150}
+                placeholder="Answer in your own words — it gives people an easy way to start a chat."
+                value={promptAnswer}
+                onChange={(e) => setPromptAnswer(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-[16px] sm:text-xs text-[var(--color-ink)] resize-none"
               />
             </div>
           </div>

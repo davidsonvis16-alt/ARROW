@@ -1,10 +1,12 @@
 import { getSupabase, supabase } from '../lib/supabase';
 import { rpc, rpcSafe } from './rpc';
-import { buildPhotoPath, forgetPhoto, resolvePhotoUrls } from './photoService';
+import { buildPhotoPath, forgetPhoto, resolvePhotoPairs, resolvePhotoUrls } from './photoService';
+import { compressImage } from '../lib/compressImage';
 import {
   DatingPreferences,
   FilterState,
   Gender,
+  PlanId,
   PromptItem,
   UserProfile,
 } from '../types';
@@ -37,6 +39,8 @@ interface RawProfile {
   dateOfBirth?: string | null;
   whatsappNumber?: string | null;
   showOnlineStatus?: boolean;
+  isIncognito?: boolean;
+  plan?: PlanId;
 }
 
 /**
@@ -47,7 +51,8 @@ interface RawProfile {
 async function hydrate(raw: RawProfile | null): Promise<UserProfile | null> {
   if (!raw) return null;
 
-  const photos = await resolvePhotoUrls((raw.photos || []).map((p) => p.path || p.url));
+  const pairs = await resolvePhotoPairs((raw.photos || []).map((p) => p.path || p.url));
+  const photos = pairs.map((p) => p.url);
 
   return {
     id: raw.id,
@@ -58,6 +63,8 @@ async function hydrate(raw: RawProfile | null): Promise<UserProfile | null> {
     location: raw.location || '',
     bio: raw.bio || '',
     photos,
+    // Only meaningful (and only used) for your own profile.
+    photoRefs: raw.dateOfBirth !== undefined ? pairs.map((p) => p.ref) : undefined,
     interests: raw.interests || [],
     lookingFor: raw.lookingFor || 'Meaningful dating',
     prompts: Array.isArray(raw.prompts) ? raw.prompts : [],
@@ -67,6 +74,8 @@ async function hydrate(raw: RawProfile | null): Promise<UserProfile | null> {
     lastActiveAt: raw.lastActiveAt ?? null,
     isPaused: Boolean(raw.isPaused),
     showOnlineStatus: raw.showOnlineStatus ?? true,
+    isIncognito: Boolean(raw.isIncognito),
+    plan: raw.plan,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
@@ -127,6 +136,11 @@ export const profileService = {
     );
   },
 
+  /** Premium only to switch on; switching off always works. */
+  async setIncognito(enabled: boolean): Promise<UserProfile | null> {
+    return hydrate(await rpc<RawProfile>('arrow_set_incognito', { p_enabled: enabled }));
+  },
+
   async getDiscoverProfiles(filters?: FilterState): Promise<UserProfile[]> {
     const genders = filters?.genders?.filter((g): g is Exclude<Gender, 'everyone'> => g !== 'everyone');
 
@@ -168,7 +182,11 @@ export const profileService = {
    * rejects a path outside your folder, so a tampered client cannot attach an
    * image to somebody else's profile.
    */
-  async uploadProfilePhoto(userId: string, file: File | Blob): Promise<string> {
+  async uploadProfilePhoto(userId: string, original: File): Promise<{ url: string; ref: string }> {
+    // Resize and strip metadata (including GPS) before anything leaves the
+    // device. See compressImage for why this matters for capacity.
+    const file = await compressImage(original);
+
     if (file.size > 5 * 1024 * 1024) {
       throw new Error('Image size must be less than 5MB.');
     }
@@ -186,7 +204,7 @@ export const profileService = {
     await rpc('arrow_add_photo', { p_storage_path: path, p_photo_url: null });
 
     const [url] = await resolvePhotoUrls([path]);
-    return url || path;
+    return { url: url || path, ref: path };
   },
 
   async deleteProfilePhoto(photoRef: string): Promise<void> {

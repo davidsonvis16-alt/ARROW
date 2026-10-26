@@ -1,0 +1,16 @@
+{
+  "name": "ARROW — Dating with intention",
+  "short_name": "ARROW",
+  "description": "Meet people through mutual interest. Talk in the app first, share your number only when you choose.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f3ef",
+  "theme_color": "#f6f3ef",
+  "categories": ["social", "lifestyle"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
