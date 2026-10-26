@@ -204,6 +204,26 @@ body {
   overscroll-behavior: none;
 }
 
+/* The app fills exactly the VISIBLE screen. Plain 100vh is taller than the
+   screen on phones (it includes the area behind the browser's toolbar), which
+   pushed the bottom menu out of sight. Old browsers get 100vh, older iPhones
+   -webkit-fill-available, and anything current 100dvh. These are @supports
+   blocks rather than repeated declarations because the CSS minifier collapses
+   repeated declarations down to the last one, which would drop the fallbacks. */
+.app-shell {
+  height: 100vh;
+}
+@supports (-webkit-touch-callout: none) {
+  .app-shell {
+    height: -webkit-fill-available;
+  }
+}
+@supports (height: 100dvh) {
+  .app-shell {
+    height: 100dvh;
+  }
+}
+
 /* Phone notch and home-bar padding. Zero on desktops. */
 .safe-top {
   padding-top: env(safe-area-inset-top);

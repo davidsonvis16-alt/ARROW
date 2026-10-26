@@ -48,7 +48,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     <nav
-      className="safe-bottom lg:hidden sticky bottom-0 z-30 w-full bg-[var(--color-offwhite)]/95 backdrop-blur-md border-t border-[var(--color-border)] px-2 pt-1.5 flex items-center justify-around select-none"
+      className="safe-bottom lg:hidden fixed bottom-0 inset-x-0 z-30 w-full bg-[var(--color-offwhite)]/95 backdrop-blur-md border-t border-[var(--color-border)] px-2 pt-1.5 flex items-center justify-around select-none"
       aria-label="Main Navigation"
     >
       {tabs.map((tab) => {

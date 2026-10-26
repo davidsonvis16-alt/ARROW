@@ -229,6 +229,19 @@ function ArrowApp() {
 
   // 2. Refresh Feed, Likes & Matches data whenever currentUser or filters change
   const refreshAppData = useCallback(async () => {
+    // Every server read needs a signed-in user, so a logged-out visitor on a
+    // connected build has nothing to fetch — asking anyway only returns 401s.
+    if (isSupabaseConfigured && !currentUser) {
+      setDiscoverProfiles([]);
+      setIncomingLikes([]);
+      setHiddenLikes(0);
+      setMatches([]);
+      setQuota(null);
+      setPlanInfo(FREE_PLAN);
+      setIsLoadingDiscover(false);
+      return;
+    }
+
     setIsLoadingDiscover(true);
     try {
       const [feed, likesData, matchesData, quotaData, plan] = await Promise.all([
@@ -707,7 +720,7 @@ function ArrowApp() {
     discoverProfiles.length > cardIndex ? discoverProfiles[cardIndex] : null;
 
   return (
-    <div className="flex h-[100dvh] w-full bg-[var(--color-offwhite)] font-sans text-[var(--color-ink)] overflow-hidden">
+    <div className="app-shell flex w-full bg-[var(--color-offwhite)] font-sans text-[var(--color-ink)] overflow-hidden">
       {/* Left Navigation Sidebar for Desktop (Professional Polish Theme) */}
       <aside className="hidden lg:flex w-72 bg-[var(--color-rail)] text-[var(--color-rail-ink)] flex-col justify-between py-10 px-8 shrink-0 z-20">
         {/* Brand Header */}
@@ -931,7 +944,7 @@ function ArrowApp() {
         />
 
         {/* Tab View Container */}
-        <div className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col">
+        <div className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
           {/* DISCOVER TAB */}
           {currentTab === 'discover' && (
             <section aria-label="Discover Section" className="flex-1 flex flex-col justify-center items-center p-4 md:p-8">
