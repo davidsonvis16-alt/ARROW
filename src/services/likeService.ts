@@ -6,6 +6,7 @@ interface RawLikeEntry {
   profile: unknown;
   isSuper: boolean;
   note?: string | null;
+  answers?: string | null;
   createdAt: string;
 }
 
@@ -14,7 +15,13 @@ async function hydrateEntries(raw: RawLikeEntry[]): Promise<LikeEntry[]> {
     raw.map(async (item): Promise<LikeEntry | null> => {
       const profile = await hydrateProfile(item.profile);
       return profile
-        ? { profile, isSuper: Boolean(item.isSuper), note: item.note ?? null, createdAt: item.createdAt }
+        ? {
+            profile,
+            isSuper: Boolean(item.isSuper),
+            note: item.note ?? null,
+            answers: item.answers ?? null,
+            createdAt: item.createdAt,
+          }
         : null;
     })
   );
@@ -24,11 +31,11 @@ async function hydrateEntries(raw: RawLikeEntry[]): Promise<LikeEntry[]> {
 
 export const likeService = {
   /**
-   * Send an arrow. The server decides whether this created a match — a client
+   * Send a spark. The server decides whether this created a match — a client
    * cannot declare one — and returns the partner's profile with the result so
    * the celebration screen needs no follow-up lookup.
    */
-  async likeProfile(targetId: string, isSuper = false, note?: string): Promise<LikeResult> {
+  async likeProfile(targetId: string, isSuper = false, note?: string, answers?: string): Promise<LikeResult> {
     const data = await rpc<{
       isMatch: boolean;
       match?: LikeResult['match'];
@@ -38,6 +45,8 @@ export const likeService = {
       p_target_id: targetId,
       p_is_super: isSuper,
       p_note: note?.trim() || null,
+      // Already encrypted to the recipient on this device.
+      p_answers: answers || null,
     });
 
     return {
@@ -88,7 +97,7 @@ export const likeService = {
     return hydrateEntries(await rpcSafe<RawLikeEntry[]>('arrow_get_sent_likes', {}, []));
   },
 
-  /** Everyone you passed on or sent an arrow to, newest first. */
+  /** Everyone you passed on or sent a spark to, newest first. */
   async getHistory(): Promise<HistoryEntry[]> {
     const raw = await rpcSafe<Array<{ profile: unknown; action: HistoryEntry['action']; isMatch: boolean; at: string }>>(
       'arrow_get_swipe_history',
@@ -104,12 +113,12 @@ export const likeService = {
     return entries.filter((e): e is HistoryEntry => e !== null);
   },
 
-  /** Take back an arrow you sent, before it becomes a match. */
+  /** Take back a spark you sent, before it becomes a match. */
   async unsendArrow(targetId: string): Promise<{ success: boolean; error?: string }> {
     return rpc<{ success: boolean; error?: string }>('arrow_unsend_arrow', { p_target_id: targetId });
   },
 
-  /** Bring back everyone you passed on. Arrows you sent are kept. */
+  /** Bring back everyone you passed on. Sparks you sent are kept. */
   async clearPasses(): Promise<number> {
     const data = await rpc<{ restored: number }>('arrow_clear_passes');
     return Number(data?.restored || 0);

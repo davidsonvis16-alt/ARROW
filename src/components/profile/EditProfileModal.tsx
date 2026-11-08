@@ -3,7 +3,8 @@ import { UserProfile, PromptItem } from '../../types';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
-import { Plus, Trash2 } from 'lucide-react';
+import { useSecure } from '../secure/SecureChat';
+import { Lock, Plus, Trash2 } from 'lucide-react';
 
 interface EditProfileModalProps {
   currentUser: UserProfile;
@@ -38,11 +39,33 @@ const AVAILABLE_INTERESTS = [
   'Philosophy',
   'Tech',
   'Yoga',
+  'Faith & church',
+  'Family time',
+  'Gardening',
+  'Dancing',
+  'Football',
+  'Farming',
+  'Volunteering',
+  'Board games',
 ];
+
+/** Starting points for "ask me first". People can write their own. */
+const ASK_FIRST_IDEAS = [
+  'What does a good Sunday look like for you?',
+  'What are you looking for at this point in your life?',
+  'How do you show someone you care?',
+  'What is something you are proud of?',
+  'Where would you take me on a first date?',
+  'What role does faith or family play in your life?',
+];
+const MAX_ASK_FIRST = 3;
 
 const LOOKING_FOR_OPTIONS = [
   'Long-term connection',
+  'Marriage',
   'Meaningful dating',
+  'Companionship',
+  'Friendship first',
   'Casual & open',
   'Deep conversations',
   'Activity partner',
@@ -60,7 +83,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [lookingFor, setLookingFor] = useState(currentUser.lookingFor || '');
   const [interests, setInterests] = useState<string[]>(currentUser.interests || []);
   const [prompts, setPrompts] = useState<PromptItem[]>(currentUser.prompts || []);
+  const [askFirst, setAskFirst] = useState<string[]>(currentUser.askFirst || []);
   const [isSaving, setIsSaving] = useState(false);
+  const { status: secureStatus, requireSecure } = useSecure();
+  const askFirstAvailable = secureStatus !== 'unavailable';
 
   const toggleInterest = (interest: string) => {
     if (interests.includes(interest)) {
@@ -101,6 +127,11 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    const questions = askFirst.map((q) => q.trim()).filter((q) => q.length >= 3);
+    // Answers are encrypted to you, so you need a key before anyone can answer.
+    if (questions.length && !(await requireSecure('Answers to your questions are encrypted so only you can read them.'))) {
+      return;
+    }
     setIsSaving(true);
     try {
       await onSave({
@@ -110,6 +141,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         lookingFor,
         interests,
         prompts: prompts.filter((p) => p.answer.trim() !== ''),
+        ...(askFirstAvailable ? { askFirst: questions } : {}),
       });
       onClose();
     } catch (err) {
@@ -126,7 +158,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       variant="bottomSheet"
       maxWidth="md"
       title="Edit Profile"
-      subtitle="Update how you appear on ARROW"
+      subtitle="Update how you appear on Finderr"
     >
       <form onSubmit={handleSave} className="space-y-6 pb-4">
         {/* Name */}
@@ -286,6 +318,66 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             ))}
           </div>
         </div>
+
+        {/* Ask me first */}
+        {askFirstAvailable && (
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <div>
+                <h4 className="text-xs font-bold text-[var(--color-ink)]">Ask me first (up to {MAX_ASK_FIRST})</h4>
+                <p className="text-[10px] text-[var(--color-stone-dark)]">
+                  Anyone who sends you a spark answers these first
+                </p>
+              </div>
+              {askFirst.length < MAX_ASK_FIRST && (
+                <button
+                  type="button"
+                  onClick={() => setAskFirst([...askFirst, ''])}
+                  className="text-xs font-bold text-[var(--color-arrow-orange-text)] flex items-center gap-1 hover:underline"
+                >
+                  <Plus size={13} />
+                  <span>Add question</span>
+                </button>
+              )}
+            </div>
+
+            {askFirst.map((question, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  maxLength={120}
+                  placeholder="Write a question…"
+                  value={question}
+                  onChange={(e) => setAskFirst(askFirst.map((q, i) => (i === idx ? e.target.value : q)))}
+                  className="flex-1 px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-xs text-[var(--color-ink)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAskFirst(askFirst.filter((_, i) => i !== idx))}
+                  className="p-1 text-[var(--color-stone-dark)] hover:text-[var(--color-danger-text)] transition-colors"
+                  aria-label="Remove question"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+
+            {askFirst.length < MAX_ASK_FIRST && (
+              <div className="flex flex-wrap gap-1.5">
+                {ASK_FIRST_IDEAS.filter((idea) => !askFirst.includes(idea)).map((idea) => (
+                  <Badge key={idea} size="sm" onClick={() => setAskFirst([...askFirst.filter((q) => q.trim()), idea])}>
+                    {idea}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            <p className="flex items-start gap-1.5 text-[10px] text-[var(--color-stone-dark)] leading-relaxed">
+              <Lock size={11} className="shrink-0 mt-px text-[var(--color-forest)]" />
+              Your questions are public. The answers are end-to-end encrypted, so only you can read them.
+            </p>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3 pt-3 border-t border-[var(--color-border-subtle)]">

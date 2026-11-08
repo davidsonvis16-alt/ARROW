@@ -39,6 +39,10 @@ export interface UserProfile {
   interests: string[];
   lookingFor: string;
   prompts: PromptItem[];
+  /** "Ask me first": questions anyone sending a spark must answer. */
+  askFirst?: string[];
+  /** Whether this person has set up end-to-end encrypted chat. */
+  secureChat?: boolean;
   allowWhatsApp: boolean;
   /** Same rule as `dateOfBirth`: yours only. */
   whatsappNumber?: string;
@@ -63,18 +67,26 @@ export interface LikeRecord {
   createdAt: string;
 }
 
-/** An arrow received or sent, with the other person's profile attached. */
+/** A spark received or sent, with the other person's profile attached. */
 export interface LikeEntry {
   profile: UserProfile;
   isSuper: boolean;
-  /** Optional note sent with a super arrow (Plus and Premium). */
+  /** Optional note sent with a super spark (Plus and Premium). */
   note?: string | null;
+  /** Encrypted answers to the recipient's "ask me first" questions. */
+  answers?: string | null;
   createdAt: string;
+}
+
+/** What is inside an encrypted answers envelope. */
+export interface AskFirstAnswer {
+  q: string;
+  a: string;
 }
 
 /**
  * What the server chose to reveal about who liked you. On the free plan only
- * super arrows arrive as entries; everyone else is just a number, because the
+ * super sparks arrive as entries; everyone else is just a number, because the
  * server never sends their identity.
  */
 export interface LikesInbox {
@@ -101,7 +113,38 @@ export interface MatchWithProfile extends MatchRecord {
   partnerProfile: UserProfile;
   unreadCount: number;
   lastMessage: MessagePreview | null;
+  /** Encrypted answers you gave to their questions, and they to yours. */
+  myAnswers?: string | null;
+  theirAnswers?: string | null;
 }
+
+export type GameKind = 'pick' | 'ask' | 'truths';
+export type GamePack = 'starter' | 'deep' | 'future';
+
+/**
+ * One round of a date game, from your side. Answers are encrypted; the server
+ * leaves `theirAnswer` out until you have given yours.
+ */
+export interface GameRound {
+  id: string;
+  matchId: string;
+  kind: GameKind;
+  pack: GamePack;
+  prompt: string | null;
+  options: string[];
+  startedByMe: boolean;
+  setup: string | null;
+  myAnswer: string | null;
+  theyAnswered: boolean;
+  theirAnswer: string | null;
+  createdAt: string;
+}
+
+/** Decrypted shapes of game payloads. */
+export interface PickAnswer { choice: number }
+export interface AskAnswer { text: string }
+export interface TruthsSetup { statements: string[] }
+export interface TruthsAnswer { lie?: number; guess?: number }
 
 export interface ChatMessage {
   id: string;
@@ -143,6 +186,7 @@ export interface PlanFeatures {
   readReceipts: boolean;
   incognito: boolean;
   boost: boolean;
+  gamePacks: boolean;
 }
 
 /** Mirrors arrow_get_my_plan. Every flag here is enforced server-side too. */

@@ -51,7 +51,7 @@ export const MatchCelebrationModal: React.FC<MatchCelebrationModalProps> = ({
           </p>
         </div>
 
-        {/* Dual Avatars with Arrow */}
+        {/* Dual Avatars with Spark */}
         <div className="flex items-center justify-center gap-3 py-3">
           <Avatar
             name={currentUser.name}

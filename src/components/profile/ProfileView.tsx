@@ -99,7 +99,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {/* Features Overview */}
         <div className="space-y-3">
           <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-stone-dark)] px-1">
-            ARROW Account Features
+            Finderr Account Features
           </h4>
 
           <div className="p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] flex items-center gap-3.5">
@@ -179,7 +179,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             >
               <Camera size={28} />
               <span className="text-xs font-bold uppercase tracking-widest">Add your first photo</span>
-              <span className="text-[11px]">Profiles with photos get far more arrows</span>
+              <span className="text-[11px]">Profiles with photos get far more sparks</span>
             </button>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />

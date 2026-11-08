@@ -31,11 +31,22 @@ const ALL_INTERESTS = [
   'Books',
   'Cycling',
   'Philosophy',
+  'Faith & church',
+  'Family time',
+  'Gardening',
+  'Dancing',
+  'Football',
+  'Farming',
+  'Volunteering',
+  'Board games',
 ];
 
 const LOOKING_FOR_OPTIONS = [
   'Long-term connection',
+  'Marriage',
   'Meaningful dating',
+  'Companionship',
+  'Friendship first',
   'Casual & open',
   'Deep conversations',
   'Activity partner',
@@ -210,7 +221,7 @@ export const FilterModal: React.FC<FilterModalProps> = ({
             <span className="flex items-center gap-2.5">
               <Lock size={16} className="text-[var(--color-arrow-orange-text)] shrink-0" />
               <span className="text-xs text-[var(--color-ink)]">
-                <span className="font-bold">Filter by intentions and interests</span> with ARROW Plus
+                <span className="font-bold">Filter by intentions and interests</span> with Finderr Plus
               </span>
             </span>
             <span className="text-xs font-black text-[var(--color-arrow-orange-text)] shrink-0">Unlock</span>

@@ -7,7 +7,7 @@ const BUCKET = 'arrow-profile-photos';
  *
  * The bucket is deliberately not public: a public bucket would let anyone with
  * a URL keep viewing someone's photos after a block, and would make every
- * profile picture on ARROW enumerable. Private storage means each object needs
+ * profile picture on Finderr enumerable. Private storage means each object needs
  * a short-lived signed URL, and signing is itself authorized by the storage
  * policy, which defers to the same visibility rule as profiles.
  */
@@ -64,7 +64,7 @@ export async function resolvePhotoUrls(refs: Array<string | null | undefined>): 
         }
       }
     } catch (err) {
-      console.warn('[arrow] failed to sign photo urls', err);
+      console.warn('[spark] failed to sign photo urls', err);
     }
   }
 

@@ -236,7 +236,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="space-y-5 text-center">
           <Logo size="lg" className="justify-center" />
           <p className="text-sm text-[var(--color-stone-dark)]">
-            This copy of ARROW is not connected to a server yet, so profiles are kept on this
+            This copy of Finderr is not connected to a server yet, so profiles are kept on this
             device only.
           </p>
           <Button variant="primary" fullWidth icon={<UserPlus size={16} />} onClick={onStartOnboarding}>

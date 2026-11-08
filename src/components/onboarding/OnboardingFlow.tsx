@@ -40,11 +40,22 @@ const AVAILABLE_INTERESTS = [
   'Books',
   'Cycling',
   'Philosophy',
+  'Faith & church',
+  'Family time',
+  'Gardening',
+  'Dancing',
+  'Football',
+  'Farming',
+  'Volunteering',
+  'Board games',
 ];
 
 const LOOKING_FOR_OPTIONS = [
   'Long-term connection',
+  'Marriage',
   'Meaningful dating',
+  'Companionship',
+  'Friendship first',
   'Casual & open',
   'Deep conversations',
   'Activity partner',
@@ -166,7 +177,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
     // One call creates the profile row and seeds default preferences. The
     // server uses the session's own user id, so there is nothing to pass.
     await profileService.updateProfile({
-      name: name.trim() || 'Arrow User',
+      name: name.trim() || 'Finderr member',
       gender,
       location: location.trim() || undefined,
     });
@@ -239,7 +250,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         return;
       }
       if (!isEligibleAdult) {
-        showToast('ARROW is strictly for verified adults aged 18 and older', 'error');
+        showToast('Finderr is strictly for verified adults aged 18 and older', 'error');
         return;
       }
       if (!hasConfirmedAge) {
@@ -595,10 +606,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           <div className="space-y-5 animate-in fade-in duration-200">
             <div className="space-y-1">
               <h2 className="text-2xl font-black text-[var(--color-ink)] tracking-tight">
-                Before you join Arrow
+                Before you join Finderr
               </h2>
               <p className="text-xs text-[var(--color-stone-dark)]">
-                Arrow is an 18+ dating app.
+                Finderr is an 18+ dating app.
               </p>
             </div>
 
@@ -874,9 +885,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
             {/* Privacy Box */}
             <div className="p-3.5 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] text-xs space-y-1">
-              <h4 className="font-bold text-[var(--color-ink)]">ARROW Security Standard</h4>
+              <h4 className="font-bold text-[var(--color-ink)]">Finderr Security Standard</h4>
               <p className="text-[var(--color-stone-dark)] leading-relaxed">
-                By entering ARROW, you confirm you are 18+ and agree to respectful, genuine interactions backed by Row-Level Security.
+                By entering Finderr, you confirm you are 18+ and agree to respectful, genuine interactions backed by Row-Level Security.
               </p>
             </div>
           </div>
@@ -911,7 +922,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           disabled={isSubmitting}
           arrow={step === totalSteps ? 'right' : 'right'}
         >
-          {isSubmitting ? 'Creating Profile...' : step === totalSteps ? 'Enter ARROW' : 'Continue'}
+          {isSubmitting ? 'Creating Profile...' : step === totalSteps ? 'Enter Finderr' : 'Continue'}
         </Button>
       </div>
     </div>

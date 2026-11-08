@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const tabTitles: Record<TabType, string> = {
     discover: 'Discover',
-    likes: 'Likes & Arrows',
+    likes: 'Likes & Sparks',
     matches: 'Chats',
     history: 'History',
     profile: 'Profile & Settings',

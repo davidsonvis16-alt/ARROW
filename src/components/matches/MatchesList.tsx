@@ -2,6 +2,14 @@ import React from 'react';
 import { MatchWithProfile } from '../../types';
 import { Button } from '../ui/Button';
 import { Users, Compass, MessageCircle, MapPin, ChevronRight } from 'lucide-react';
+import { useOpened } from '../secure/SecureChat';
+
+/** The last message, opened on this device. It arrives encrypted. */
+const Preview: React.FC<{ partnerId: string; body: string }> = ({ partnerId, body }) => {
+  const { text, error } = useOpened(partnerId, body);
+  if (text !== null) return <>{text}</>;
+  return <span className="italic">{error ? 'Encrypted message' : '…'}</span>;
+};
 
 interface MatchesListProps {
   matches: MatchWithProfile[];
@@ -155,7 +163,7 @@ export const MatchesList: React.FC<MatchesListProps> = ({
                     }`}
                   >
                     {item.lastMessage.isMine && <span className="text-[var(--color-stone-dark)]">You: </span>}
-                    {item.lastMessage.body}
+                    <Preview partnerId={profile.id} body={item.lastMessage.body} />
                   </p>
                 ) : (
                   <div className="flex items-center gap-1 text-xs text-[var(--color-stone-dark)] mt-0.5 truncate">

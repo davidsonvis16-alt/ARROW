@@ -12,12 +12,17 @@ import {
   PlanInfo,
   PaymentMethod,
   HistoryEntry,
+  AskFirstAnswer,
 } from './types';
 import { FREE_PLAN } from './services/billingService';
 import { isUpgradeError } from './services/rpc';
 import { UpgradeReason } from './config/plans';
 import { PlansModal } from './components/premium/PlansModal';
 import { SuperArrowModal } from './components/discover/SuperArrowModal';
+import { AskFirstModal } from './components/discover/AskFirstModal';
+import { SecureProvider, useSecure } from './components/secure/SecureChat';
+import { secureService } from './services/secureService';
+import { useTextSize } from './hooks/useTextSize';
 import { Logo, CreatedByEden } from './components/brand/Logo';
 import { storageService } from './services/storageService';
 import { api, authService, profileService } from './services/api';
@@ -61,6 +66,9 @@ import {
 
 function ArrowApp() {
   const { showToast } = useToast();
+  const { requireSecure } = useSecure();
+  // Applied app-wide so the chosen size holds on every screen.
+  useTextSize();
 
   // App Navigation & Current User State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -77,7 +85,7 @@ function ArrowApp() {
 
   // Likes & Matches State
   const [incomingLikes, setIncomingLikes] = useState<LikeEntry[]>([]);
-  // Arrows you sent that have not been answered yet.
+  // Sparks you sent that have not been answered yet.
   const [sentLikes, setSentLikes] = useState<LikeEntry[]>([]);
   // Everyone you have swiped on, for the History tab.
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -91,6 +99,13 @@ function ArrowApp() {
   const [planInfo, setPlanInfo] = useState<PlanInfo>(FREE_PLAN);
   const [plansReason, setPlansReason] = useState<UpgradeReason | null>(null);
   const [superTarget, setSuperTarget] = useState<UserProfile | null>(null);
+  // Someone with "ask me first" questions, waiting for your answers.
+  const [askTarget, setAskTarget] = useState<{
+    profile: UserProfile;
+    isSuper: boolean;
+    note?: string;
+    fromLikes: boolean;
+  } | null>(null);
 
   // Filters State
   const [filters, setFilters] = useState<FilterState>({
@@ -273,7 +288,7 @@ function ArrowApp() {
       setQuota(quotaData);
       setPlanInfo(plan);
     } catch (err) {
-      console.error('Failed to load ARROW app data', err);
+      console.error('Failed to load Finderr app data', err);
     } finally {
       setIsLoadingDiscover(false);
     }
@@ -379,11 +394,37 @@ function ArrowApp() {
 
   const unreadTotal = matches.reduce((sum, m) => sum + (m.unreadCount || 0), 0);
 
+  // Secure chat follows whoever is signed in on this device.
+  useEffect(() => {
+    secureService.init(currentUser?.id ?? null).catch((err) => console.warn('[spark] secure chat', err));
+  }, [currentUser?.id]);
+
+  /** Answers are encrypted to the recipient, so secure chat must be on first. */
+  const confirmAnswers = async (answers: AskFirstAnswer[]) => {
+    const pending = askTarget;
+    if (!pending) return;
+    // Demo mode has no keys and no server to protect, so it skips this.
+    if (
+      secureService.status !== 'unavailable' &&
+      !(await requireSecure(`Your answers are encrypted so only ${pending.profile.name} can read them.`))
+    ) {
+      return;
+    }
+    setAskTarget(null);
+    if (pending.fromLikes) await handleLikeBackFromLikes(pending.profile, answers);
+    else await handleLike(pending.profile, pending.isSuper, pending.note, answers);
+  };
+
   // Discovery Actions
-  const handleLike = async (targetProfile: UserProfile, isSuper = false, note?: string) => {
+  const handleLike = async (
+    targetProfile: UserProfile,
+    isSuper = false,
+    note?: string,
+    answers?: AskFirstAnswer[]
+  ) => {
     if (!currentUser) {
       setIsAuthModalOpen(true);
-      showToast(`Log in or create a profile to send an Arrow to ${targetProfile.name}`, 'info');
+      showToast(`Log in or create a profile to send a Spark to ${targetProfile.name}`, 'info');
       return;
     }
 
@@ -392,15 +433,21 @@ function ArrowApp() {
       return;
     }
 
-    // On Plus, a super arrow can carry a note: ask for it first.
+    // On Plus, a super spark can carry a note: ask for it first.
     if (isSuper && note === undefined && planInfo.features.arrowNotes) {
       setSuperTarget(targetProfile);
       return;
     }
 
+    // They ask first: collect the answers, then come back here with them.
+    if (targetProfile.askFirst?.length && answers === undefined) {
+      setAskTarget({ profile: targetProfile, isSuper, note, fromLikes: false });
+      return;
+    }
+
     setCardAnimation(isSuper ? 'super' : 'like');
     try {
-      const result = await api.likeProfile(targetProfile.id, isSuper, note);
+      const result = await api.likeProfile(targetProfile.id, isSuper, note, answers);
       if (result.quota) setQuota(result.quota);
 
       setTimeout(() => {
@@ -422,7 +469,7 @@ function ArrowApp() {
         openPlans(isSuper ? 'arrows' : planInfo.plan === 'free' ? 'arrows' : 'browse');
         showToast(err.message, 'info');
       } else {
-        showToast(err.message || 'Could not send that arrow', 'error');
+        showToast(err.message || 'Could not send that spark', 'error');
       }
     }
   };
@@ -487,21 +534,21 @@ function ArrowApp() {
     }
   };
 
-  /** Take back an arrow that has not been answered yet. */
+  /** Take back a spark that has not been answered yet. */
   const handleUnsend = async (profile: UserProfile) => {
     try {
       const result = await api.unsendArrow(profile.id);
       if (!result.success) {
-        showToast(result.error || 'Could not take that arrow back', 'info');
+        showToast(result.error || 'Could not take that spark back', 'info');
         return;
       }
-      showToast(`Arrow to ${profile.name} taken back`, 'info');
+      showToast(`Spark to ${profile.name} taken back`, 'info');
       setDetailProfile(null);
       await refreshInbox();
       setHistory(await api.getHistory());
       setQuota(await api.getLikeQuota());
     } catch (err: any) {
-      showToast(err.message || 'Could not take that arrow back', 'error');
+      showToast(err.message || 'Could not take that spark back', 'error');
     }
   };
 
@@ -590,13 +637,17 @@ function ArrowApp() {
   };
 
   // Likes Tab Actions
-  const handleLikeBackFromLikes = async (targetProfile: UserProfile) => {
+  const handleLikeBackFromLikes = async (targetProfile: UserProfile, answers?: AskFirstAnswer[]) => {
     if (!currentUser) {
       setIsAuthModalOpen(true);
       return;
     }
+    if (targetProfile.askFirst?.length && answers === undefined) {
+      setAskTarget({ profile: targetProfile, isSuper: false, fromLikes: true });
+      return;
+    }
     try {
-      const result = await api.likeProfile(targetProfile.id);
+      const result = await api.likeProfile(targetProfile.id, false, undefined, answers);
       if (result.quota) setQuota(result.quota);
 
       if (result.isMatch) {
@@ -610,7 +661,7 @@ function ArrowApp() {
       refreshAppData();
     } catch (err: any) {
       if (isUpgradeError(err)) openPlans('arrows');
-      else showToast(err.message || 'Could not send that arrow', 'error');
+      else showToast(err.message || 'Could not send that spark', 'error');
     }
   };
 
@@ -730,6 +781,8 @@ function ArrowApp() {
         console.warn(err);
       }
     }
+    // The unlocked key leaves this device with the session.
+    await secureService.forgetDevice();
     storageService.setCurrentUserId(null);
     setCurrentUser(null);
     setPlanInfo(FREE_PLAN);
@@ -742,6 +795,7 @@ function ArrowApp() {
   const handleDeleteAccount = async () => {
     if (!currentUser) return;
     await api.deleteAccount();
+    await secureService.forgetDevice();
     setCurrentUser(null);
     setPlanInfo(FREE_PLAN);
     setIsSettingsOpen(false);
@@ -763,7 +817,7 @@ function ArrowApp() {
     setCurrentUser(newProfile);
     setIsOnboarding(false);
     setCurrentTab('discover');
-    showToast(`Welcome to ARROW, ${newProfile.name}!`, 'success');
+    showToast(`Welcome to Finderr, ${newProfile.name}!`, 'success');
     refreshAppData();
   };
 
@@ -907,7 +961,7 @@ function ArrowApp() {
               className="w-full text-left p-4 rounded-2xl bg-gradient-to-br from-[var(--color-arrow-orange)] to-[#c43d1f] text-white space-y-1 hover:brightness-110 transition-all"
             >
               <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest opacity-90">
-                <Zap size={12} /> ARROW Plus
+                <Zap size={12} /> Finderr Plus
               </span>
               <span className="block text-sm font-black leading-tight">
                 {!currentUser || planInfo.trialAvailable ? `Try it free for ${planInfo.trialDays} days` : 'See who likes you'}
@@ -1058,8 +1112,8 @@ function ArrowApp() {
                       className="mt-3 mx-auto block text-center text-[11px] text-[var(--color-stone-dark)] hover:text-[var(--color-arrow-orange-text)]"
                     >
                       {quota.arrowsRemaining > 0
-                        ? `${quota.arrowsRemaining} arrows left today · Go unlimited with Plus`
-                        : 'Out of arrows for today · Get unlimited with Plus'}
+                        ? `${quota.arrowsRemaining} sparks left today · Go unlimited with Plus`
+                        : 'Out of sparks for today · Get unlimited with Plus'}
                     </button>
                   )}
 
@@ -1100,8 +1154,8 @@ function ArrowApp() {
                     </h3>
                     <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed">
                       {currentUser
-                        ? "You've seen everyone on ARROW for now. People you passed on come back after a week — or bring them back now. New people join all the time."
-                        : "You're exploring ARROW in guest mode. Log in or create a profile to start sending Arrows and connecting."}
+                        ? "You've seen everyone on Finderr for now. People you passed on come back after a week — or bring them back now. New people join all the time."
+                        : "You're exploring Finderr in guest mode. Log in or create a profile to start sending Sparks and connecting."}
                     </p>
                   </div>
 
@@ -1134,7 +1188,7 @@ function ArrowApp() {
                             onClick={() => setCurrentTab('likes')}
                             icon={<Send size={15} />}
                           >
-                            {`Waiting on ${sentLikes.length} ${sentLikes.length === 1 ? 'person' : 'people'} you sent arrows to`}
+                            {`Waiting on ${sentLikes.length} ${sentLikes.length === 1 ? 'person' : 'people'} you sent sparks to`}
                           </Button>
                         )}
 
@@ -1371,7 +1425,7 @@ function ArrowApp() {
           <div className="p-4 rounded-2xl bg-[var(--color-forest-subtle)] border border-[var(--color-border-subtle)] text-[11px] text-[var(--color-forest)] font-medium space-y-1">
             <p className="font-bold">Human Verified & Protected</p>
             <p className="text-[var(--color-forest)]/80 text-[10px]">
-              ARROW enforces strict anti-harassment safety checks across all interactions.
+              Finderr enforces strict anti-harassment safety checks across all interactions.
             </p>
           </div>
         </div>
@@ -1498,6 +1552,8 @@ function ArrowApp() {
         currentUserId={currentUser?.id ?? null}
         hasReadReceipts={planInfo.features.readReceipts}
         onUpgrade={() => openPlans('receipts')}
+        canUseGamePacks={planInfo.features.gamePacks}
+        onUpgradeGames={() => openPlans('games')}
       />
 
       {/* Filters Bottom Sheet */}
@@ -1608,6 +1664,7 @@ function ArrowApp() {
         isOpen={Boolean(reportTarget)}
         onClose={() => setReportTarget(null)}
         onSubmitReport={handleSubmitReport}
+        matchId={reportTarget ? matches.find((m) => m.partnerProfile.id === reportTarget.id)?.id ?? null : null}
       />
 
       <PlansModal
@@ -1638,6 +1695,13 @@ function ArrowApp() {
         }}
       />
 
+      <AskFirstModal
+        target={askTarget?.profile ?? null}
+        isSuper={askTarget?.isSuper}
+        onClose={() => setAskTarget(null)}
+        onSend={confirmAnswers}
+      />
+
       {/* Legal & Safety Guidelines Modal */}
       <LegalModal
         type={legalModal.type}
@@ -1651,7 +1715,9 @@ function ArrowApp() {
 export default function App() {
   return (
     <ToastProvider>
-      <ArrowApp />
+      <SecureProvider>
+        <ArrowApp />
+      </SecureProvider>
     </ToastProvider>
   );
 }

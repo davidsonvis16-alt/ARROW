@@ -13,7 +13,7 @@ interface SuperArrowModalProps {
 const MAX_NOTE = 140;
 
 /**
- * A super arrow with an optional short note (Plus and Premium). It is the only
+ * A super spark with an optional short note (Plus and Premium). It is the only
  * thing anyone can say before a match, so it is short, optional, and goes
  * through the same report-and-block tools as chat.
  */
@@ -39,7 +39,7 @@ export const SuperArrowModal: React.FC<SuperArrowModalProps> = ({ target, superR
   const prompt = target.prompts?.find((p) => p.answer?.trim());
 
   return (
-    <Modal isOpen={Boolean(target)} onClose={onClose} variant="bottomSheet" maxWidth="sm" title={`Super arrow to ${target.name}`} subtitle={`${superRemaining} left today · they'll see you first`}>
+    <Modal isOpen={Boolean(target)} onClose={onClose} variant="bottomSheet" maxWidth="sm" title={`Super spark to ${target.name}`} subtitle={`${superRemaining} left today · they'll see you first`}>
       <div className="space-y-4">
         {prompt && (
           <div className="p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border-subtle)]">
@@ -72,7 +72,7 @@ export const SuperArrowModal: React.FC<SuperArrowModalProps> = ({ target, superR
           className="w-full py-3.5 rounded-[var(--radius-pill)] bg-[var(--color-forest)] text-[var(--color-offwhite)] text-sm font-black flex items-center justify-center gap-2 active:scale-[0.99] transition-all disabled:opacity-60 hover:brightness-110"
         >
           {sending ? <Loader2 size={16} className="animate-spin" /> : <Star size={16} />}
-          Send super arrow
+          Send super spark
         </button>
       </div>
     </Modal>

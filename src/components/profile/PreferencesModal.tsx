@@ -69,7 +69,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
       variant="bottomSheet"
       maxWidth="md"
       title="Dating Preferences"
-      subtitle="Control who you meet on ARROW"
+      subtitle="Control who you meet on Finderr"
     >
       <div className="space-y-6 pb-4">
         {/* Age Range Slider */}

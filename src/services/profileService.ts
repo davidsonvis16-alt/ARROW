@@ -28,6 +28,8 @@ interface RawProfile {
   interests: string[] | null;
   lookingFor: string | null;
   prompts: PromptItem[] | null;
+  askFirst?: string[] | null;
+  secureChat?: boolean;
   allowWhatsApp: boolean;
   isVerifiedAdult: boolean;
   isPaused?: boolean;
@@ -68,6 +70,8 @@ async function hydrate(raw: RawProfile | null): Promise<UserProfile | null> {
     interests: raw.interests || [],
     lookingFor: raw.lookingFor || 'Meaningful dating',
     prompts: Array.isArray(raw.prompts) ? raw.prompts : [],
+    askFirst: Array.isArray(raw.askFirst) ? raw.askFirst : [],
+    secureChat: Boolean(raw.secureChat),
     allowWhatsApp: Boolean(raw.allowWhatsApp),
     whatsappNumber: raw.whatsappNumber || undefined,
     isVerifiedAdult: Boolean(raw.isVerifiedAdult),
@@ -111,6 +115,13 @@ export const profileService = {
     });
 
     const profile = await hydrate(raw);
+    if (!profile) throw new Error('Could not load your profile after saving.');
+    return profile;
+  },
+
+  /** "Ask me first" questions. The server needs secure chat set up first. */
+  async setAskFirst(questions: string[]): Promise<UserProfile> {
+    const profile = await hydrate(await rpc<RawProfile>('arrow_set_ask_first', { p_questions: questions }));
     if (!profile) throw new Error('Could not load your profile after saving.');
     return profile;
   },

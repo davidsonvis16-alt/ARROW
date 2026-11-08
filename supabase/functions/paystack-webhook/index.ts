@@ -1,4 +1,4 @@
-// Paystack -> ARROW. The only writer of paid plans.
+// Paystack -> Finderr. The only writer of paid plans.
 //
 // Deploy with --no-verify-jwt: Paystack does not send a Supabase login. What
 // authenticates a request instead is Paystack's HMAC signature, checked before
@@ -57,7 +57,7 @@ async function applySubscription(code: string): Promise<void> {
   }
   const userId = await userFor(sub.customer?.customer_code ?? null, sub.customer?.email ?? null);
   if (!userId) {
-    console.warn('[paystack-webhook] no ARROW account for subscription', code);
+    console.warn('[paystack-webhook] no Finderr account for subscription', code);
     return;
   }
 
@@ -96,7 +96,7 @@ async function handleCharge(reference: string): Promise<void> {
 
   const userId = await userFor(tx.customer?.customer_code ?? null, tx.customer?.email ?? null, m.arrow_user_id);
   if (!userId) {
-    console.warn('[paystack-webhook] no ARROW account for charge', reference);
+    console.warn('[paystack-webhook] no Finderr account for charge', reference);
     return;
   }
 

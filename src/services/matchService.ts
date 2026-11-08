@@ -11,6 +11,8 @@ interface RawMatch {
   partnerProfile: unknown;
   unreadCount: number;
   lastMessage: MessagePreview | null;
+  myAnswers?: string | null;
+  theirAnswers?: string | null;
 }
 
 export const matchService = {
@@ -37,6 +39,8 @@ export const matchService = {
           partnerProfile,
           unreadCount: Number(record.unreadCount || 0),
           lastMessage: record.lastMessage,
+          myAnswers: record.myAnswers ?? null,
+          theirAnswers: record.theirAnswers ?? null,
         };
       })
     );

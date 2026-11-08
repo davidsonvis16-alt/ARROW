@@ -1,6 +1,6 @@
-# ARROW — Supabase setup
+# Finderr — Supabase setup
 
-ARROW keeps its entire authorization model in the database. Getting this file
+Finderr keeps its entire authorization model in the database. Getting this file
 right is not optional polish: the client has no ability to enforce who may see
 whom, and is not trusted to try.
 
@@ -13,7 +13,7 @@ whom, and is not trusted to try.
 3. The last statement prints a summary and raises if anything did not land:
 
    ```
-   NOTICE: ARROW schema installed: 13 tables, 56 functions, RLS active on all.
+   NOTICE: Finderr schema installed: 17 tables, 72 functions, RLS active on all.
    ```
 
    If you see an error instead, nothing was half-applied — fix the cause and run
@@ -34,6 +34,13 @@ errors:
 Photos written by older clients all share `display_order = 0`, because the old
 upload path defaulted it. They are renumbered per user, keeping their existing
 order. No photo is deleted and none is reordered relative to the others.
+
+**Upgrading to end-to-end encrypted chat.** After this version is installed,
+the database refuses plaintext messages. Deploy the matching app at the same
+time, or people on an old copy of the app will see "Messages must be end-to-end
+encrypted" until they refresh. Messages sent before the upgrade stay readable
+as they were; everything new is encrypted. Each person is asked to choose a
+secure-chat passcode the first time they message, answer questions or play.
 
 **Coexistence.** Every object is prefixed `arrow_` and photos live in a
 dedicated `arrow-profile-photos` bucket, so a project that already holds
@@ -98,7 +105,7 @@ simply ask for a public channel and skip the policy.
 
 ## 6. Payments with Paystack (optional — the app works without them)
 
-ARROW takes payments through **Paystack**, because Stripe does not open
+Finderr takes payments through **Paystack**, because Stripe does not open
 accounts for Kenyan businesses (its country list routes Kenya to Paystack,
 which Stripe owns). Paystack Kenya supports cards and **M-Pesa**.
 
@@ -177,7 +184,7 @@ Supabase's own limits, current at the time of writing (check
 | People connected to Realtime at once | 200 | 500, then $10 per 1,000 |
 | Pauses when idle | after 1 week | never |
 
-What that means for ARROW in practice:
+What that means for Finderr in practice:
 
 - **Accounts are not the bottleneck.** 50,000 monthly users is far beyond where
   the other limits bite.
@@ -226,7 +233,7 @@ is a single function to audit rather than a rule repeated in four places.
 phone number is returned by exactly one function, only to a confirmed match, and
 only while its owner has opted in.
 
-**Abuse limits live in the database.** Daily arrows, hourly messages, report
+**Abuse limits live in the database.** Daily sparks, hourly messages, report
 caps and photo caps are enforced in `arrow_limit` and the functions that read
 it, not in the UI, so a modified client cannot exceed them. Adjust the numbers
 in one place.
@@ -241,7 +248,7 @@ them. Payments are recorded once per Paystack reference, so a webhook that is
 delivered twice cannot grant time twice, and cancelling never removes time
 already paid for. "See who liked you" is withheld by the server, not
 blurred in the browser: free accounts receive a count, never the identities,
-and the `arrow_likes` table no longer lets you list arrows pointed at you.
+and the `arrow_likes` table no longer lets you list sparks pointed at you.
 
 **Internal helpers are not granted to anyone.** `arrow_actor`,
 `arrow_can_view_profile`, `arrow_safe_profile` and `arrow_match_partner` take a

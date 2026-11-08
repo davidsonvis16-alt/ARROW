@@ -11,7 +11,7 @@ interface ProfileDetailModalProps {
   onLike: () => void;
   onPass: () => void;
   onReport: () => void;
-  /** You already sent this person an arrow that they have not answered. */
+  /** You already sent this person a spark that they have not answered. */
   arrowSent?: boolean;
   onUnsend?: () => void;
 }
@@ -174,16 +174,35 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
           </div>
         )}
 
+        {/* Ask me first */}
+        {profile.askFirst && profile.askFirst.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-stone-dark)]">
+              {profile.name} asks first
+            </h4>
+            <ul className="p-4 bg-[var(--color-arrow-orange-subtle)] rounded-2xl border border-[var(--color-border-subtle)] space-y-1.5">
+              {profile.askFirst.map((q, i) => (
+                <li key={i} className="text-sm font-semibold text-[var(--color-ink)]">
+                  {q}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-[var(--color-stone-dark)]">
+              You'll answer these when you send a spark. Only {profile.name} can read your answers.
+            </p>
+          </div>
+        )}
+
         {/* Bottom Actions Sticky in Modal */}
         {arrowSent ? (
           <div className="pt-4 space-y-2.5 border-t border-[var(--color-border-subtle)]">
             <p className="text-center text-xs font-semibold text-[var(--color-stone-dark)]">
-              You sent {profile.name} an arrow · waiting for theirs
+              You sent {profile.name} a spark · waiting for theirs
             </p>
             <button
               type="button"
               onClick={() => {
-                if (window.confirm(`Take back your arrow to ${profile.name}? They won't be told.`)) {
+                if (window.confirm(`Take back your spark to ${profile.name}? They won't be told.`)) {
                   onUnsend?.();
                   onClose();
                 }
@@ -191,7 +210,7 @@ export const ProfileDetailModal: React.FC<ProfileDetailModalProps> = ({
               className="w-full py-3 px-4 rounded-xl border-2 border-[var(--color-border)] text-[var(--color-ink)] font-bold text-sm flex items-center justify-center gap-1.5 hover:border-[var(--color-danger)] hover:text-[var(--color-danger-text)] transition-colors"
             >
               <Undo2 size={16} strokeWidth={2.5} />
-              <span>Unsend arrow</span>
+              <span>Unsend spark</span>
             </button>
           </div>
         ) : (

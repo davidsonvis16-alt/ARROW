@@ -1,5 +1,5 @@
 /**
- * Contrast check for the ARROW palette.
+ * Contrast check for the Finderr palette.
  *
  * Reads the design tokens as the browser computes them, in both themes, and
  * measures each text/background pair that the UI actually uses against the

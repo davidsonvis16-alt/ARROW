@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UserProfile, ReportReason } from '../../types';
+import { api } from '../../services/api';
+import { secureService } from '../../services/secureService';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { ShieldAlert, AlertTriangle } from 'lucide-react';
@@ -9,6 +11,33 @@ interface ReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmitReport: (reason: ReportReason, details: string) => Promise<void>;
+  /** The conversation with this person, if you matched. */
+  matchId?: string | null;
+}
+
+/** Reports carry at most this much text; the server enforces it too. */
+const MAX_REPORT = 2000;
+
+/**
+ * Chat is end-to-end encrypted, so moderators cannot read it. When the person
+ * reporting chooses to, their own device opens the most recent messages and
+ * attaches them as text. Nothing is attached without that choice.
+ */
+async function recentMessagesAsText(matchId: string, partner: UserProfile): Promise<string> {
+  const messages = (await api.getMessages(matchId)).slice(-10);
+  const lines = await Promise.all(
+    messages.map(async (m) => {
+      let text: string;
+      try {
+        text = await secureService.openFrom(partner.id, m.body);
+      } catch {
+        text = '[could not be opened on this device]';
+      }
+      const when = new Date(m.createdAt).toLocaleString();
+      return `[${when}] ${m.isMine ? 'Me' : partner.name}: ${text}`;
+    })
+  );
+  return lines.join('\n');
 }
 
 const REPORT_REASONS: Array<{ value: ReportReason; label: string; description: string }> = [
@@ -25,7 +54,7 @@ const REPORT_REASONS: Array<{ value: ReportReason; label: string; description: s
   {
     value: 'underage',
     label: 'Suspected underage user',
-    description: 'ARROW is strictly for adults aged 18 and over',
+    description: 'Finderr is strictly for adults aged 18 and over',
   },
   {
     value: 'fake_profile',
@@ -54,10 +83,16 @@ export const ReportModal: React.FC<ReportModalProps> = ({
   isOpen,
   onClose,
   onSubmitReport,
+  matchId,
 }) => {
   const [selectedReason, setSelectedReason] = useState<ReportReason>('inappropriate_photos');
   const [details, setDetails] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [attachChat, setAttachChat] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) setAttachChat(false);
+  }, [isOpen]);
 
   if (!reportedUser) return null;
 
@@ -65,7 +100,12 @@ export const ReportModal: React.FC<ReportModalProps> = ({
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await onSubmitReport(selectedReason, details.trim());
+      let text = details.trim();
+      if (attachChat && matchId) {
+        const chat = await recentMessagesAsText(matchId, reportedUser);
+        if (chat) text = `${text}\n\n--- Recent messages, shared by the reporter ---\n${chat}`.trim();
+      }
+      await onSubmitReport(selectedReason, text.slice(0, MAX_REPORT));
       onClose();
     } catch (err) {
       console.error('Report submission failed', err);
@@ -140,6 +180,24 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] text-xs text-[var(--color-ink)] resize-none"
           />
         </div>
+
+        {matchId && (
+          <label className="p-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface-subtle)] flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={attachChat}
+              onChange={(e) => setAttachChat(e.target.checked)}
+              className="mt-0.5 accent-[var(--color-arrow-orange)]"
+            />
+            <div>
+              <p className="text-xs font-bold text-[var(--color-ink)]">Share our last 10 messages</p>
+              <p className="text-[11px] text-[var(--color-stone-dark)] leading-tight">
+                Your chat is end-to-end encrypted, so our safety team cannot see it unless you share it. Your phone
+                opens the messages and sends them with this report only.
+              </p>
+            </div>
+          </label>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-3 pt-2 border-t border-[var(--color-border-subtle)]">

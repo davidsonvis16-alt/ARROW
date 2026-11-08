@@ -1,7 +1,7 @@
 import React, { useId } from 'react';
 
 /**
- * The ARROW mark: an arrow in flight, set in a rounded tile like an app icon.
+ * The Finderr mark: an arrow in flight, set in a rounded tile like an app icon.
  * The same drawing is used for the favicon and install icon in /public, so the
  * brand looks identical in the tab, on the home screen and inside the app.
  */
@@ -18,7 +18,7 @@ export const LogoMark: React.FC<{ size?: number; className?: string }> = ({ size
     viewBox="0 0 64 64"
     className={className}
     role="img"
-    aria-label="ARROW"
+    aria-label="Finderr"
   >
     <defs>
       <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
@@ -60,7 +60,7 @@ export const Logo: React.FC<LogoProps> = ({ size = 'md', inverted = false, class
           inverted ? 'text-[var(--color-rail-ink)]' : 'text-[var(--color-ink)]'
         }`}
       >
-        ARROW
+        Finderr
       </span>
     </span>
   );

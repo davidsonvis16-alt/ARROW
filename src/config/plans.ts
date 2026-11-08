@@ -48,9 +48,11 @@ export const PLANS: Record<PlanId, PlanCopy> = {
     tagline: 'Everything you need to meet someone.',
     highlights: [
       'Create a profile with up to 6 photos',
-      '50 arrows and 1 super arrow a day',
+      '50 sparks and 1 super spark a day',
       '1 rewind a day',
       'Unlimited messaging with your matches',
+      'End-to-end encrypted chat and answers',
+      'Ask-me-first questions and date games',
       'See how many people liked you',
       'Every safety feature, always',
     ],
@@ -62,9 +64,10 @@ export const PLANS: Record<PlanId, PlanCopy> = {
     highlights: [
       'Everything in Free',
       'See everyone who liked you',
-      'Unlimited arrows and rewinds',
-      '3 super arrows a day, each with a note',
+      'Unlimited sparks and rewinds',
+      '3 super sparks a day, each with a note',
       'Filter by interests and intentions',
+      'Deep Talk and Future Us date-game packs',
     ],
   },
   premium: {
@@ -73,7 +76,7 @@ export const PLANS: Record<PlanId, PlanCopy> = {
     tagline: 'Be seen first, on your own terms.',
     highlights: [
       'Everything in Plus',
-      '5 super arrows a day',
+      '5 super sparks a day',
       'A 30-minute boost every week',
       'Incognito: only people you like can see you',
       'Read receipts in chat',
@@ -86,11 +89,14 @@ export const PLAN_ORDER: PlanId[] = ['free', 'plus', 'premium'];
 /** Rows for the comparison table. `true` is a tick, a string is shown as-is. */
 export const FEATURE_TABLE: Array<{ label: string; values: Record<PlanId, string | boolean> }> = [
   { label: 'Price per month', values: { free: 'KES 0', plus: formatKes(PRICE_KES.plus), premium: formatKes(PRICE_KES.premium) } },
-  { label: 'Arrows per day', values: { free: '50', plus: 'Unlimited', premium: 'Unlimited' } },
-  { label: 'Super arrows per day', values: { free: '1', plus: '3', premium: '5' } },
-  { label: 'Note with a super arrow', values: { free: false, plus: true, premium: true } },
+  { label: 'Sparks per day', values: { free: '50', plus: 'Unlimited', premium: 'Unlimited' } },
+  { label: 'Super sparks per day', values: { free: '1', plus: '3', premium: '5' } },
+  { label: 'Note with a super spark', values: { free: false, plus: true, premium: true } },
   { label: 'Rewinds', values: { free: '1 a day', plus: 'Unlimited', premium: 'Unlimited' } },
   { label: 'Messaging your matches', values: { free: true, plus: true, premium: true } },
+  { label: 'End-to-end encrypted chat', values: { free: true, plus: true, premium: true } },
+  { label: 'Ask-me-first questions', values: { free: true, plus: true, premium: true } },
+  { label: 'Date games', values: { free: 'Starter pack', plus: 'All packs', premium: 'All packs' } },
   { label: 'Photos on your profile', values: { free: '6', plus: '6', premium: '6' } },
   { label: 'How many people liked you', values: { free: true, plus: true, premium: true } },
   { label: 'Who liked you', values: { free: 'Super only', plus: true, premium: true } },
@@ -117,7 +123,7 @@ export const PAYMENT_METHODS: Record<PaymentMethod, { label: string; short: stri
     detail: [
       'Visa or Mastercard. Renews automatically every month until you cancel.',
       'Cancel in two taps from Membership — you keep your plan until the date you have paid up to.',
-      'Your card details go to Paystack only. ARROW never sees your card number.',
+      'Your card details go to Paystack only. Finderr never sees your card number.',
     ],
   },
 };
@@ -125,7 +131,7 @@ export const PAYMENT_METHODS: Record<PaymentMethod, { label: string; short: stri
 export const HOW_PAYING_WORKS = [
   'Choose a plan and how you want to pay.',
   'You go to Paystack\'s secure checkout page. Check the amount, then pay with M-Pesa or your card.',
-  'You come straight back to ARROW and your plan switches on within a few seconds.',
+  'You come straight back to Finderr and your plan switches on within a few seconds.',
   'Every payment appears under Payment history in Membership. Paystack also emails you a receipt.',
 ];
 
@@ -160,7 +166,7 @@ export const BILLING_FAQ: Array<{ q: string; a: string }> = [
   },
   {
     q: 'Is my payment safe?',
-    a: 'Payments are processed by Paystack, a payment provider owned by Stripe. ARROW never receives your card number or M-Pesa PIN.',
+    a: 'Payments are processed by Paystack, a payment provider owned by Stripe. Finderr never receives your card number or M-Pesa PIN.',
   },
 ];
 
@@ -174,16 +180,18 @@ export type UpgradeReason =
   | 'boost'
   | 'incognito'
   | 'receipts'
+  | 'games'
   | 'browse';
 
 export const UPGRADE_COPY: Record<UpgradeReason, { title: string; plan: Exclude<PlanId, 'free'> }> = {
   likes: { title: 'See everyone who liked you', plan: 'plus' },
-  arrows: { title: "You're out of arrows for today", plan: 'plus' },
+  arrows: { title: "You're out of sparks for today", plan: 'plus' },
   rewind: { title: 'Rewind as often as you like', plan: 'plus' },
   filters: { title: 'Filter by what matters to you', plan: 'plus' },
-  note: { title: 'Say something with your super arrow', plan: 'plus' },
+  note: { title: 'Say something with your super spark', plan: 'plus' },
   boost: { title: 'Be seen first with a boost', plan: 'premium' },
   incognito: { title: 'Browse on your own terms', plan: 'premium' },
   receipts: { title: 'Know when they have read it', plan: 'premium' },
+  games: { title: 'Go deeper with Deep Talk and Future Us', plan: 'plus' },
   browse: { title: 'Plans & pricing', plan: 'plus' },
 };

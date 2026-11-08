@@ -176,7 +176,7 @@ export const PlansModal: React.FC<PlansModalProps> = ({
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--color-success)]">Active</p>
                 <p className="text-lg font-black tracking-tight text-[var(--color-ink)]">
-                  ARROW {PLANS[current].name}
+                  Finderr {PLANS[current].name}
                   {planInfo.status === 'trialing' ? ' — free trial' : ''}
                 </p>
               </div>
@@ -197,7 +197,7 @@ export const PlansModal: React.FC<PlansModalProps> = ({
                 !planInfo.renews &&
                 planInfo.status !== 'past_due' &&
                 `Renewal cancelled. You keep ${PLANS[current].name} until ${fmtDate(planInfo.currentPeriodEnd)} and will not be charged again.`}
-              {planInfo.source === 'grant' && 'Given to you by the ARROW team.'}
+              {planInfo.source === 'grant' && 'Given to you by the Finderr team.'}
             </p>
 
             {planInfo.status === 'past_due' && (
@@ -421,7 +421,7 @@ export const PlansModal: React.FC<PlansModalProps> = ({
             ))}
           </ol>
           <p className="flex items-center gap-1.5 text-[11px] text-[var(--color-stone-dark)]">
-            <Lock size={12} /> Secured by Paystack. ARROW never sees your card number or M-Pesa PIN.
+            <Lock size={12} /> Secured by Paystack. Finderr never sees your card number or M-Pesa PIN.
           </p>
         </section>
 

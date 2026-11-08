@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChatMessage, MatchWithProfile, MESSAGE_REACTIONS, MessageReaction } from '../../types';
 import { api } from '../../services/api';
-import { Send, Loader2, ShieldAlert, SmilePlus, CheckCheck, Sparkles } from 'lucide-react';
+import { secureService } from '../../services/secureService';
+import { useSecure } from '../secure/SecureChat';
+import { SecurityBar } from '../secure/SecurityBar';
+import { AnswersCard } from './AnswersCard';
+import { Send, Loader2, ShieldAlert, SmilePlus, CheckCheck, Sparkles, Lock } from 'lucide-react';
 
 interface ChatPanelProps {
   match: MatchWithProfile;
@@ -71,6 +75,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [partnerTyping, setPartnerTyping] = useState(false);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  // Decrypted text by message id. Bodies arrive encrypted; this device opens them.
+  const [opened, setOpened] = useState<Record<string, { text?: string; error?: string }>>({});
+  const { status: secureStatus, requireSecure } = useSecure();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -80,7 +87,32 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const partnerTypingTimer = useRef<number | undefined>(undefined);
 
   const partnerName = match.partnerProfile.name;
+  const partnerId = match.partnerProfile.id;
   const openers = useMemo(() => openersFor(match), [match]);
+
+  useEffect(() => {
+    let active = true;
+    const pending = messages.filter((m) => !opened[m.id] || (opened[m.id].error && secureStatus === 'ready'));
+    if (pending.length === 0) return;
+
+    Promise.all(
+      pending.map(async (m) => {
+        try {
+          return [m.id, { text: await secureService.openFrom(partnerId, m.body) }] as const;
+        } catch (err) {
+          return [m.id, { error: (err as Error).message }] as const;
+        }
+      })
+    ).then((pairs) => {
+      if (active) setOpened((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+    });
+
+    return () => {
+      active = false;
+    };
+    // `opened` is read, not watched: watching it would re-run after every write.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, partnerId, secureStatus]);
 
   const scrollToEnd = useCallback((behavior: ScrollBehavior = 'smooth') => {
     requestAnimationFrame(() => {
@@ -171,6 +203,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const send = async (text?: string) => {
     const body = (text ?? draft).trim();
     if (!body || isSending) return;
+    if (!(await requireSecure('Messages on Finderr are end-to-end encrypted.'))) return;
 
     setIsSending(true);
     setError(null);
@@ -179,7 +212,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     lastTypingSent.current = 0;
 
     try {
-      const sent = await api.sendMessage(match.id, body);
+      const sent = await api.sendMessage(match.id, partnerId, body);
+      // We know what we just wrote; no need to decrypt our own copy.
+      setOpened((prev) => ({ ...prev, [sent.id]: { text: body } }));
       setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]));
       setDraft('');
       scrollToEnd();
@@ -224,11 +259,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   return (
     <div className="flex flex-col h-[min(62dvh,32rem)] rounded-[var(--radius-card-sm)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] overflow-hidden">
+      <SecurityBar partner={match.partnerProfile} />
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto no-scrollbar p-3.5 space-y-1.5"
         onClick={() => setPickerFor(null)}
       >
+        <AnswersCard match={match} />
         {isLoading ? (
           <div className="h-full flex items-center justify-center text-[var(--color-stone-dark)]">
             <Loader2 size={18} className="animate-spin" />
@@ -288,7 +325,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       }`}
                       onDoubleClick={() => !message.isMine && react(message, '❤️')}
                     >
-                      <p className="whitespace-pre-wrap">{message.body}</p>
+                      {opened[message.id]?.text !== undefined ? (
+                        <p className="whitespace-pre-wrap">{opened[message.id].text}</p>
+                      ) : (
+                        <p className="flex items-center gap-1.5 italic opacity-80">
+                          <Lock size={12} className="shrink-0" />
+                          {opened[message.id]?.error
+                            ? secureStatus === 'locked'
+                              ? 'Unlock secure chat to read this'
+                              : opened[message.id].error
+                            : 'Opening…'}
+                        </p>
+                      )}
                       <span
                         className={`block text-[10px] mt-0.5 ${
                           message.isMine ? 'text-white/75' : 'text-[var(--color-stone-dark)]'

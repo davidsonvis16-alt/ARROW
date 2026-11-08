@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Star,
   X,
+  MessageSquareQuote,
 } from 'lucide-react';
 
 interface ProfileCardProps {
@@ -273,6 +274,13 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
             </p>
           )}
 
+          {profile.askFirst && profile.askFirst.length > 0 && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/45 backdrop-blur-md border border-white/15 text-[11px] font-bold text-white">
+              <MessageSquareQuote size={12} className="text-[var(--color-arrow-orange)]" />
+              Asks {profile.askFirst.length === 1 ? 'a question' : `${profile.askFirst.length} questions`} first
+            </div>
+          )}
+
           {profile.prompts?.[0]?.answer && (
             <div className="p-3 bg-black/45 backdrop-blur-md rounded-2xl border border-white/15 text-xs text-white/90 space-y-1">
               <div className="text-[11px] font-bold text-[var(--color-arrow-orange)] uppercase tracking-wider">
@@ -285,7 +293,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
       </div>
 
       {/* Controls sit under the card so they never cover the photo, and so the
-          rewind and super arrow have room to say what they cost. */}
+          rewind and super spark have room to say what they cost. */}
       <div className="flex items-center justify-center gap-3">
         <button
           type="button"
@@ -315,8 +323,8 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           className={`w-12 h-12 rounded-full bg-[var(--color-forest)] text-[var(--color-offwhite)] flex items-center justify-center transition-all hover:brightness-125 disabled:opacity-35 disabled:cursor-not-allowed active:scale-95 relative ${
             superRemaining <= 0 ? 'opacity-60' : ''
           }`}
-          aria-label={`Send a super arrow to ${profile.name}, ${superRemaining} left today`}
-          title={superRemaining > 0 ? `Super arrow — ${superRemaining} left today` : 'No super arrows left today'}
+          aria-label={`Send a super spark to ${profile.name}, ${superRemaining} left today`}
+          title={superRemaining > 0 ? `Super spark — ${superRemaining} left today` : 'No super sparks left today'}
         >
           <Star size={18} />
           <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--color-surface)] text-[var(--color-forest)] border border-[var(--color-border)] text-[10px] font-black leading-[16px] text-center">
@@ -328,15 +336,15 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           type="button"
           onClick={onLike}
           className="flex-1 h-14 rounded-2xl bg-[var(--color-arrow-orange)] text-white font-bold uppercase tracking-widest transition-all hover:bg-[var(--color-arrow-orange-hover)] shadow-lg active:scale-[0.98] flex items-center justify-center gap-2"
-          aria-label={`Send an arrow to ${profile.name}`}
+          aria-label={`Send a spark to ${profile.name}`}
         >
-          <span>Arrow</span>
+          <span>Spark</span>
           <span aria-hidden="true">→</span>
         </button>
       </div>
 
       <p className="hidden md:block text-center text-[11px] text-[var(--color-stone-dark)]">
-        Use <kbd className="arrow-kbd">←</kbd> pass, <kbd className="arrow-kbd">→</kbd> arrow,{' '}
+        Use <kbd className="arrow-kbd">←</kbd> pass, <kbd className="arrow-kbd">→</kbd> spark,{' '}
         <kbd className="arrow-kbd">↑</kbd> super, <kbd className="arrow-kbd">i</kbd> details
       </p>
     </div>

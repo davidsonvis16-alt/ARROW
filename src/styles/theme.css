@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ARROW design tokens
+   Finderr design tokens
    --------------------------------------------------------------------------
    Every colour in the app resolves to a token defined here. Components use
    var(--color-*) rather than a literal hex, which is what lets the same markup
@@ -335,4 +335,13 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/* Text size (Settings → Display). Zoom scales type, spacing and tap targets
+   together, which keeps layouts intact where only enlarging fonts would not. */
+:root[data-text-size='large'] body {
+  zoom: 1.12;
+}
+:root[data-text-size='larger'] body {
+  zoom: 1.25;
 }

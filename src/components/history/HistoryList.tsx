@@ -32,7 +32,7 @@ function ago(iso: string): string {
 /**
  * Everyone you have swiped on, newest first. Swiping removes someone from the
  * deck, so this is where they stay findable — and where a pass you regret can
- * be turned into an arrow.
+ * be turned into a spark.
  */
 export const HistoryList: React.FC<HistoryListProps> = ({
   entries,
@@ -79,7 +79,7 @@ export const HistoryList: React.FC<HistoryListProps> = ({
         <div className="space-y-1 max-w-xs">
           <h3 className="text-2xl font-black tracking-tight text-[var(--color-ink)]">Nothing here yet</h3>
           <p className="text-sm text-[var(--color-stone-dark)]">
-            Everyone you pass on or send an arrow to will be listed here, so you never lose track of anyone.
+            Everyone you pass on or send a spark to will be listed here, so you never lose track of anyone.
           </p>
         </div>
         <Button variant="primary" onClick={onGoToDiscover} icon={<Compass size={16} />}>
@@ -99,7 +99,7 @@ export const HistoryList: React.FC<HistoryListProps> = ({
       <div className="flex gap-2" role="tablist" aria-label="Filter history">
         {([
           ['all', `All · ${entries.length}`],
-          ['arrows', `Arrows · ${entries.length - passedCount}`],
+          ['arrows', `Sparks · ${entries.length - passedCount}`],
           ['passed', `Passed · ${passedCount}`],
         ] as const).map(([id, label]) => (
           <button
@@ -166,11 +166,11 @@ export const HistoryList: React.FC<HistoryListProps> = ({
                       </>
                     ) : entry.action === 'super' ? (
                       <>
-                        <Star size={11} className="text-[var(--color-forest)]" /> Super arrow sent
+                        <Star size={11} className="text-[var(--color-forest)]" /> Super spark sent
                       </>
                     ) : (
                       <>
-                        <ArrowRight size={11} className="text-[var(--color-arrow-orange-text)]" /> Arrow sent
+                        <ArrowRight size={11} className="text-[var(--color-arrow-orange-text)]" /> Spark sent
                       </>
                     )}
                     <span>· {ago(entry.at)}</span>
@@ -193,13 +193,13 @@ export const HistoryList: React.FC<HistoryListProps> = ({
                   onClick={() => onSendArrow(profile)}
                   className="shrink-0 px-3.5 h-11 rounded-full bg-[var(--color-arrow-orange)] text-white text-xs font-black"
                 >
-                  Send arrow
+                  Send spark
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`Take back your arrow to ${profile.name}? They won't be told.`)) onUnsend(profile);
+                    if (window.confirm(`Take back your spark to ${profile.name}? They won't be told.`)) onUnsend(profile);
                   }}
                   className="shrink-0 px-3.5 h-11 rounded-full border border-[var(--color-border)] text-xs font-bold text-[var(--color-ink)] hover:border-[var(--color-danger)] hover:text-[var(--color-danger-text)] transition-colors"
                 >

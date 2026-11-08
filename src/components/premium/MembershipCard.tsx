@@ -52,7 +52,7 @@ export const MembershipCard: React.FC<MembershipCardProps> = ({ planInfo, isGues
       </span>
       <span className="flex-1 min-w-0">
         <span className={`block text-sm font-black ${isPaid ? 'text-[var(--color-ink)]' : ''}`}>
-          {isPaid ? `ARROW ${PLANS[plan].name}` : 'Membership & pricing'}
+          {isPaid ? `Finderr ${PLANS[plan].name}` : 'Membership & pricing'}
         </span>
         <span className={`block text-[11px] ${isPaid ? 'text-[var(--color-stone-dark)]' : 'opacity-90'}`}>{detail}</span>
       </span>

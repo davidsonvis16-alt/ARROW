@@ -1,9 +1,9 @@
 -- ==============================================================================
--- ARROW DATING APPLICATION — SECURE SCHEMA (v3)
+-- Finderr DATING APPLICATION — SECURE SCHEMA (v3)
 -- ==============================================================================
 -- Run this whole file in the Supabase SQL Editor. It is:
 --   * FRESH-INSTALL SAFE — every object is created before it is referenced.
---   * IDEMPOTENT — re-running it upgrades an existing ARROW install in place.
+--   * IDEMPOTENT — re-running it upgrades an existing Finderr install in place.
 --   * ADDITIVE — every object is prefixed `arrow_` and the dedicated
 --     `arrow-profile-photos` storage bucket is used, so unrelated tables in the
 --     same project (e.g. an existing restaurant app) are never touched.
@@ -32,6 +32,12 @@
 --    arrow_effective_plan + arrow_plan_has on every call. Plans are written
 --    only by the Paystack webhook (service_role) or the one-time trial, so no
 --    client can grant itself Premium, and a lapsed plan reverts on its own.
+-- 7. END-TO-END ENCRYPTED CONTENT. Chat messages, date-game answers and
+--    "ask me first" answers are encrypted on the sender's device to keys only
+--    the two people hold (section 7.25). This database stores ciphertext,
+--    refuses plaintext, and seals game answers until both people have played.
+--    Private keys arrive only wrapped with a passcode that never leaves the
+--    device, so not even the operator can read a conversation.
 -- ==============================================================================
 
 -- ==============================================================================
@@ -208,7 +214,7 @@ CREATE TABLE IF NOT EXISTS public.arrow_preferences (
   CONSTRAINT check_arrow_pref_age CHECK (age_min >= 18 AND age_max >= age_min AND age_max <= 120)
 );
 
--- 3.5 LIKES — an arrow sent, or a pass. One row per ordered pair.
+-- 3.5 LIKES — a spark sent, or a pass. One row per ordered pair.
 CREATE TABLE IF NOT EXISTS public.arrow_likes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   from_user_id UUID NOT NULL REFERENCES public.arrow_profiles(id) ON DELETE CASCADE,
@@ -219,12 +225,12 @@ CREATE TABLE IF NOT EXISTS public.arrow_likes (
   CONSTRAINT unique_arrow_like_direction UNIQUE (from_user_id, to_user_id)
 );
 
--- A super arrow is a limited, higher-signal like that surfaces first.
+-- A super spark is a limited, higher-signal like that surfaces first.
 ALTER TABLE public.arrow_likes ADD COLUMN IF NOT EXISTS is_super BOOLEAN NOT NULL DEFAULT FALSE;
 
--- A short note may ride along with a super arrow (Plus and Premium). It is the
+-- A short note may ride along with a super spark (Plus and Premium). It is the
 -- only text a person can send before a match, so it is short, only allowed on
--- a super arrow, and dropped if the arrow is withdrawn.
+-- a super spark, and dropped if the spark is withdrawn.
 ALTER TABLE public.arrow_likes ADD COLUMN IF NOT EXISTS note TEXT DEFAULT NULL;
 ALTER TABLE public.arrow_likes DROP CONSTRAINT IF EXISTS check_arrow_like_note;
 ALTER TABLE public.arrow_likes ADD CONSTRAINT check_arrow_like_note
@@ -324,7 +330,7 @@ BEGIN
       );
     EXCEPTION WHEN check_violation THEN
       RAISE NOTICE
-        'ARROW: % not validated — some existing rows predate it. New writes are still checked.',
+        'Finderr: % not validated — some existing rows predate it. New writes are still checked.',
         split_part(r.spec, '|', 2);
     END;
   END LOOP;
@@ -336,7 +342,7 @@ BEGIN
 
   IF v_stale > 0 THEN
     RAISE EXCEPTION
-      'ARROW: % existing profile(s) have a date of birth under 18. Resolve these before installing.',
+      'Finderr: % existing profile(s) have a date of birth under 18. Resolve these before installing.',
       v_stale;
   END IF;
 
@@ -426,15 +432,157 @@ CREATE TABLE IF NOT EXISTS public.arrow_usage (
   CONSTRAINT check_arrow_usage_kind CHECK (kind IN ('rewind'))
 );
 
--- Unsending an arrow deletes it, so the deletion is logged here to keep it
+-- Unsending a spark deletes it, so the deletion is logged here to keep it
 -- counting towards the daily allowance (send, unsend, resend would otherwise
 -- get round the limit).
 ALTER TABLE public.arrow_usage DROP CONSTRAINT IF EXISTS check_arrow_usage_kind;
 ALTER TABLE public.arrow_usage ADD CONSTRAINT check_arrow_usage_kind
   CHECK (kind IN ('rewind', 'unsend', 'unsend_super'));
 
--- Incognito (Premium): only people you have sent an arrow to can see you.
+-- Incognito (Premium): only people you have sent a spark to can see you.
 ALTER TABLE public.arrow_profiles ADD COLUMN IF NOT EXISTS is_incognito BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- 3.13 SECURE CHAT KEYS — one current key pair per person, for end-to-end
+-- encryption. The private half is created on the person's device, wrapped
+-- there with a key derived from a passcode that never leaves the device, and
+-- only that wrapped (unreadable) form is stored here. With it, a new phone can
+-- restore the key; without the passcode, nobody — including whoever runs this
+-- database — can unwrap it. Retired keys keep their public half so the other
+-- person can still read messages that were written under them.
+CREATE TABLE IF NOT EXISTS public.arrow_user_keys (
+  key_id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES public.arrow_profiles(id) ON DELETE CASCADE,
+  public_key JSONB NOT NULL,
+  wrapped_key JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  retired_at TIMESTAMPTZ DEFAULT NULL,
+  CONSTRAINT check_arrow_key_id CHECK (key_id ~ '^[A-Za-z0-9_-]{16,64}$')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_arrow_user_keys_current
+  ON public.arrow_user_keys(user_id) WHERE retired_at IS NULL;
+
+-- "Ask me first": up to three questions anyone sending you a spark answers.
+-- The questions are public profile text; the answers are end-to-end encrypted
+-- to you and ride on the spark itself.
+ALTER TABLE public.arrow_profiles ADD COLUMN IF NOT EXISTS ask_first TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.arrow_profiles DROP CONSTRAINT IF EXISTS check_arrow_ask_first_len;
+ALTER TABLE public.arrow_profiles ADD CONSTRAINT check_arrow_ask_first_len
+  CHECK (cardinality(ask_first) <= 3);
+
+ALTER TABLE public.arrow_likes ADD COLUMN IF NOT EXISTS answers TEXT DEFAULT NULL;
+ALTER TABLE public.arrow_likes DROP CONSTRAINT IF EXISTS check_arrow_like_answers;
+ALTER TABLE public.arrow_likes ADD CONSTRAINT check_arrow_like_answers
+  CHECK (answers IS NULL OR (NOT is_pass AND char_length(answers) <= 6000));
+
+-- Encrypted messages are longer than the text they carry (base64 plus the
+-- envelope), so the cap is on the envelope. arrow_send_message still holds
+-- the plaintext to 2000 characters on the sending device.
+ALTER TABLE public.arrow_messages DROP CONSTRAINT IF EXISTS check_arrow_message_len;
+ALTER TABLE public.arrow_messages ADD CONSTRAINT check_arrow_message_len
+  CHECK (char_length(body) BETWEEN 1 AND 12000);
+
+-- 3.14 DATE GAMES — short games a matched pair plays inside the chat.
+-- Cards are the prompts, written here so a client cannot inject its own text
+-- or unlock a paid pack by naming it. Every answer is end-to-end encrypted,
+-- and a round is SEALED: the server does not hand you the other person's
+-- answer until you have given yours, so nobody can peek and copy.
+CREATE TABLE IF NOT EXISTS public.arrow_game_cards (
+  id TEXT PRIMARY KEY,
+  pack TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  options TEXT[] NOT NULL DEFAULT '{}',
+  CONSTRAINT check_arrow_card_pack CHECK (pack IN ('starter', 'deep', 'future')),
+  CONSTRAINT check_arrow_card_kind CHECK (kind IN ('pick', 'ask')),
+  CONSTRAINT check_arrow_card_options CHECK (
+    (kind = 'pick' AND cardinality(options) = 2) OR (kind = 'ask' AND cardinality(options) = 0)
+  )
+);
+
+CREATE TABLE IF NOT EXISTS public.arrow_games (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  match_id UUID NOT NULL REFERENCES public.arrow_matches(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  pack TEXT NOT NULL DEFAULT 'starter',
+  card_id TEXT DEFAULT NULL REFERENCES public.arrow_game_cards(id) ON DELETE SET NULL,
+  started_by UUID NOT NULL REFERENCES public.arrow_profiles(id) ON DELETE CASCADE,
+  -- Two truths and a lie: the three statements, encrypted to the partner.
+  setup TEXT DEFAULT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT check_arrow_game_kind CHECK (kind IN ('pick', 'ask', 'truths')),
+  CONSTRAINT check_arrow_game_setup CHECK (
+    (kind = 'truths') = (setup IS NOT NULL) AND (setup IS NULL OR char_length(setup) <= 6000)
+  )
+);
+
+CREATE TABLE IF NOT EXISTS public.arrow_game_answers (
+  game_id UUID NOT NULL REFERENCES public.arrow_games(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.arrow_profiles(id) ON DELETE CASCADE,
+  answer TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (game_id, user_id),
+  CONSTRAINT check_arrow_game_answer_len CHECK (char_length(answer) <= 6000)
+);
+
+CREATE INDEX IF NOT EXISTS idx_arrow_games_match ON public.arrow_games(match_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_arrow_games_starter ON public.arrow_games(started_by, created_at DESC);
+
+-- The decks. Upserted by id, so editing a card here and re-running the file
+-- updates it everywhere. Starter is free; Deep Talk and Future Us are Plus.
+INSERT INTO public.arrow_game_cards (id, pack, kind, prompt, options) VALUES
+  ('s-pick-01', 'starter', 'pick', 'A first date:', ARRAY['Coffee and a long walk', 'Dinner somewhere new']),
+  ('s-pick-02', 'starter', 'pick', 'A free Saturday:', ARRAY['Out with friends', 'Home, slow and quiet']),
+  ('s-pick-03', 'starter', 'pick', 'Holiday:', ARRAY['Beach in Diani', 'Hills and fresh air']),
+  ('s-pick-04', 'starter', 'pick', 'Morning or night?', ARRAY['Up with the sun', 'Alive after dark']),
+  ('s-pick-05', 'starter', 'pick', 'Food:', ARRAY['Nyama choma', 'Pilau and kachumbari']),
+  ('s-pick-06', 'starter', 'pick', 'Texting style:', ARRAY['Voice notes', 'Long messages']),
+  ('s-pick-07', 'starter', 'pick', 'Music in the car:', ARRAY['Sing along loudly', 'Talk, music low']),
+  ('s-pick-08', 'starter', 'pick', 'Would you rather:', ARRAY['Cook together', 'Be cooked for']),
+  ('s-pick-09', 'starter', 'pick', 'Plans:', ARRAY['Every detail booked', 'See where the day goes']),
+  ('s-pick-10', 'starter', 'pick', 'Pets:', ARRAY['Dog person', 'Cat person']),
+  ('s-pick-11', 'starter', 'pick', 'Would you rather:', ARRAY['Dance all night', 'Talk all night']),
+  ('s-pick-12', 'starter', 'pick', 'Sunday:', ARRAY['Church or service, then lunch', 'Lie-in, then brunch']),
+  ('s-ask-01', 'starter', 'ask', 'What made you smile today?', '{}'),
+  ('s-ask-02', 'starter', 'ask', 'What is the best meal you have ever had, and where?', '{}'),
+  ('s-ask-03', 'starter', 'ask', 'What song always gets you moving?', '{}'),
+  ('s-ask-04', 'starter', 'ask', 'What would your friends say you are like on a first date?', '{}'),
+  ('s-ask-05', 'starter', 'ask', 'Describe your perfect lazy Sunday.', '{}'),
+  ('s-ask-06', 'starter', 'ask', 'What is something small that makes a big difference to your day?', '{}'),
+  ('s-ask-07', 'starter', 'ask', 'Where would you take me to show me your city?', '{}'),
+  ('s-ask-08', 'starter', 'ask', 'What is a skill you would love to learn this year?', '{}'),
+  ('s-ask-09', 'starter', 'ask', 'What is the funniest thing that happened to you recently?', '{}'),
+  ('s-ask-10', 'starter', 'ask', 'Tea, coffee or something else — and how do you take it?', '{}'),
+  ('d-pick-01', 'deep', 'pick', 'In a disagreement, you:', ARRAY['Talk it out right away', 'Need time to think first']),
+  ('d-pick-02', 'deep', 'pick', 'You feel loved most through:', ARRAY['Words and time together', 'Help and thoughtful gestures']),
+  ('d-pick-03', 'deep', 'pick', 'Family should be:', ARRAY['Close by and involved', 'Loved, with some distance']),
+  ('d-pick-04', 'deep', 'pick', 'Money in a couple:', ARRAY['Shared pot', 'Yours, mine and ours']),
+  ('d-pick-05', 'deep', 'pick', 'Faith in your life is:', ARRAY['Central to who I am', 'Personal, or not for me']),
+  ('d-pick-06', 'deep', 'pick', 'When life is hard, you:', ARRAY['Lean on people', 'Go quiet and work through it']),
+  ('d-ask-01', 'deep', 'ask', 'What is something you believe now that you did not believe five years ago?', '{}'),
+  ('d-ask-02', 'deep', 'ask', 'Who has shaped you most, and how?', '{}'),
+  ('d-ask-03', 'deep', 'ask', 'What does a good relationship look like to you, day to day?', '{}'),
+  ('d-ask-04', 'deep', 'ask', 'What are you most proud of that most people do not know about?', '{}'),
+  ('d-ask-05', 'deep', 'ask', 'What did your last relationship teach you?', '{}'),
+  ('d-ask-06', 'deep', 'ask', 'When do you feel most like yourself?', '{}'),
+  ('d-ask-07', 'deep', 'ask', 'What is one thing you need from a partner that you rarely say out loud?', '{}'),
+  ('d-ask-08', 'deep', 'ask', 'What is a fear you have made peace with?', '{}'),
+  ('f-pick-01', 'future', 'pick', 'Home one day:', ARRAY['City life', 'Somewhere upcountry, with space']),
+  ('f-pick-02', 'future', 'pick', 'Children:', ARRAY['Yes, or already have', 'Not for me']),
+  ('f-pick-03', 'future', 'pick', 'Retirement looks like:', ARRAY['A farm and grandchildren', 'Travelling the world']),
+  ('f-pick-04', 'future', 'pick', 'Weekends together:', ARRAY['Big plans and adventures', 'Simple, close to home']),
+  ('f-pick-05', 'future', 'pick', 'A wedding:', ARRAY['Big, with everyone', 'Small and close']),
+  ('f-pick-06', 'future', 'pick', 'Career and love:', ARRAY['Build together side by side', 'Each chase our own thing']),
+  ('f-ask-01', 'future', 'ask', 'Where do you see yourself in five years?', '{}'),
+  ('f-ask-02', 'future', 'ask', 'What tradition would you want to keep or start in your own home?', '{}'),
+  ('f-ask-03', 'future', 'ask', 'What is one place we should visit together, and why?', '{}'),
+  ('f-ask-04', 'future', 'ask', 'What does a good life look like when you are 70?', '{}'),
+  ('f-ask-05', 'future', 'ask', 'What is something you want to build in the next few years?', '{}'),
+  ('f-ask-06', 'future', 'ask', 'How would you want to celebrate our first anniversary?', '{}'),
+  ('f-ask-07', 'future', 'ask', 'What would make you feel at home with someone?', '{}'),
+  ('f-ask-08', 'future', 'ask', 'What is a dream you have not told many people?', '{}')
+ON CONFLICT (id) DO UPDATE
+  SET pack = EXCLUDED.pack, kind = EXCLUDED.kind, prompt = EXCLUDED.prompt, options = EXCLUDED.options;
 
 -- ==============================================================================
 -- 4. INDEXES
@@ -563,6 +711,7 @@ AS $$
     WHEN 'read_receipts'    THEN p_plan = 'premium'
     WHEN 'incognito'        THEN p_plan = 'premium'
     WHEN 'boost'            THEN p_plan = 'premium'
+    WHEN 'game_packs'       THEN p_plan IN ('plus', 'premium')
     ELSE FALSE
   END;
 $$;
@@ -581,7 +730,7 @@ $$;
 -- A profile is visible only when a relationship justifies it:
 --   * it is your own, or
 --   * they are live in discovery (verified adult, not paused/banned), or
---   * they sent you an arrow (so you can decide on it), or
+--   * they sent you a spark (so you can decide on it), or
 --   * you matched.
 -- A block in either direction overrides all of the above.
 CREATE OR REPLACE FUNCTION public.arrow_can_view_profile(p_viewer UUID, p_target UUID)
@@ -619,7 +768,7 @@ BEGIN
     RETURN TRUE;
   END IF;
 
-  -- They put themselves in front of you by sending an arrow.
+  -- They put themselves in front of you by sending a spark.
   IF EXISTS (
     SELECT 1 FROM public.arrow_likes l
     WHERE l.from_user_id = p_target AND l.to_user_id = p_viewer AND l.is_pass = FALSE
@@ -714,6 +863,10 @@ AS $$
     'interests', COALESCE(p.interests, '{}'),
     'lookingFor', COALESCE(p.looking_for, 'Meaningful dating'),
     'prompts', COALESCE(p.prompts, '[]'::jsonb),
+    'askFirst', to_jsonb(COALESCE(p.ask_first, '{}')),
+    'secureChat', EXISTS (
+      SELECT 1 FROM public.arrow_user_keys k WHERE k.user_id = p.id AND k.retired_at IS NULL
+    ),
     'allowWhatsApp', p.allow_whatsapp,
     'isVerifiedAdult', p.is_verified_adult,
     'isPaused', p.is_paused,
@@ -970,7 +1123,7 @@ BEGIN
   v_age := date_part('year', age(p_date_of_birth))::INT;
 
   IF v_age < 18 THEN
-    RETURN jsonb_build_object('success', FALSE, 'error', 'You must be 18 or older to use ARROW');
+    RETURN jsonb_build_object('success', FALSE, 'error', 'You must be 18 or older to use Finderr');
   END IF;
 
   IF v_age > 120 THEN
@@ -1179,7 +1332,7 @@ BEGIN
       AND (v_location IS NULL OR p.location ILIKE '%' || v_location || '%')
       AND (v_interests IS NULL OR p.interests && v_interests)
       AND (v_looking_for IS NULL OR p.looking_for = ANY(v_looking_for))
-      -- Someone you sent an arrow to stays out of the deck (they are in your
+      -- Someone you sent a spark to stays out of the deck (they are in your
       -- sent list). Someone you passed on comes back after the cooldown: on a
       -- young or small community a permanent pass empties the deck for good.
       AND NOT EXISTS (
@@ -1196,7 +1349,7 @@ BEGIN
     SELECT id,
            ROW_NUMBER() OVER (
              ORDER BY
-               -- People who already sent you an arrow come first: they are
+               -- People who already sent you a spark come first: they are
                -- the likeliest match and the best use of a swipe. Boosted
                -- profiles come next, then whoever was around most recently.
                liked_me DESC,
@@ -1205,7 +1358,7 @@ BEGIN
                created_at DESC
            ) AS ord
     FROM candidates
-    -- Incognito people only appear to someone they already sent an arrow to.
+    -- Incognito people only appear to someone they already sent a spark to.
     WHERE NOT hidden OR liked_me
     ORDER BY ord
     LIMIT v_limit
@@ -1269,7 +1422,7 @@ BEGIN
   WHERE user_id = v_actor AND kind = 'rewind'
     AND created_at > NOW() - INTERVAL '24 hours';
 
-  -- Unsent arrows still used up their place in today's allowance.
+  -- Unsent sparks still used up their place in today's allowance.
   v_super  := v_super + public.arrow_recent_usage(v_actor, 'unsend_super');
   v_arrows := v_arrows
     + public.arrow_recent_usage(v_actor, 'unsend')
@@ -1290,16 +1443,18 @@ BEGIN
 END;
 $$;
 
--- 7.10 Send an arrow. Returns whether it produced a match, plus the partner's
+-- 7.10 Send a spark. Returns whether it produced a match, plus the partner's
 -- safe profile so the client never has to make a second, unauthorized lookup.
--- The signature gained p_note; drop the old one so the two do not coexist as
--- overloads (an old two-argument grant would otherwise linger).
+-- The signature gained p_note, then p_answers; drop the old ones so they do
+-- not coexist as overloads (an old grant would otherwise linger).
 DROP FUNCTION IF EXISTS public.arrow_like_profile(UUID, BOOLEAN);
+DROP FUNCTION IF EXISTS public.arrow_like_profile(UUID, BOOLEAN, TEXT);
 
 CREATE OR REPLACE FUNCTION public.arrow_like_profile(
   p_target_id UUID,
   p_is_super BOOLEAN DEFAULT FALSE,
-  p_note TEXT DEFAULT NULL
+  p_note TEXT DEFAULT NULL,
+  p_answers TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -1314,21 +1469,38 @@ DECLARE
   v_used INT;
   v_limit INT;
   v_match RECORD;
+  v_answers TEXT := NULLIF(btrim(COALESCE(p_answers, '')), '');
 BEGIN
   IF p_target_id IS NULL OR p_target_id = v_actor THEN
-    RAISE EXCEPTION 'You cannot send an arrow to yourself' USING ERRCODE = '22023';
+    RAISE EXCEPTION 'You cannot send a spark to yourself' USING ERRCODE = '22023';
   END IF;
 
   IF NOT public.arrow_can_view_profile(v_actor, p_target_id) THEN
     RAISE EXCEPTION 'Profile not available' USING ERRCODE = '42501';
   END IF;
 
+  -- Someone who asks questions first gets a spark only with answers, and
+  -- only answers they alone can open.
+  IF EXISTS (
+    SELECT 1 FROM public.arrow_profiles
+    WHERE id = p_target_id AND cardinality(ask_first) > 0
+  ) THEN
+    IF v_answers IS NULL THEN
+      RAISE EXCEPTION 'Answer their questions to send a spark' USING ERRCODE = '22023';
+    END IF;
+    IF NOT public.arrow_envelope_ok(v_answers, v_actor, p_target_id) THEN
+      RAISE EXCEPTION 'Answers must be end-to-end encrypted' USING ERRCODE = '22023';
+    END IF;
+  ELSE
+    v_answers := NULL;
+  END IF;
+
   IF v_note IS NOT NULL THEN
     IF NOT v_super THEN
-      RAISE EXCEPTION 'A note can only be sent with a super arrow' USING ERRCODE = '22023';
+      RAISE EXCEPTION 'A note can only be sent with a super spark' USING ERRCODE = '22023';
     END IF;
     IF NOT public.arrow_plan_has(v_plan, 'arrow_notes') THEN
-      RAISE EXCEPTION 'Notes with super arrows are part of ARROW Plus' USING ERRCODE = 'P0402';
+      RAISE EXCEPTION 'Notes with super sparks are part of Finderr Plus' USING ERRCODE = 'P0402';
     END IF;
     IF char_length(v_note) > 140 THEN
       RAISE EXCEPTION 'Keep the note to 140 characters' USING ERRCODE = '22023';
@@ -1342,7 +1514,7 @@ BEGIN
     v_used := v_used + public.arrow_recent_usage(v_actor, 'unsend_super');
     v_limit := public.arrow_plan_limit(v_plan, 'daily_super');
     IF v_used >= v_limit THEN
-      RAISE EXCEPTION 'You have used all % super arrows for today', v_limit USING ERRCODE = '53400';
+      RAISE EXCEPTION 'You have used all % super sparks for today', v_limit USING ERRCODE = '53400';
     END IF;
   END IF;
 
@@ -1355,15 +1527,16 @@ BEGIN
   v_limit := public.arrow_plan_limit(v_plan, 'daily_arrows');
 
   IF v_used >= v_limit THEN
-    RAISE EXCEPTION 'Daily arrow limit reached. Try again tomorrow.' USING ERRCODE = '53400';
+    RAISE EXCEPTION 'Daily spark limit reached. Try again tomorrow.' USING ERRCODE = '53400';
   END IF;
 
-  INSERT INTO public.arrow_likes (from_user_id, to_user_id, is_pass, is_super, note, created_at)
-  VALUES (v_actor, p_target_id, FALSE, v_super, v_note, NOW())
+  INSERT INTO public.arrow_likes (from_user_id, to_user_id, is_pass, is_super, note, answers, created_at)
+  VALUES (v_actor, p_target_id, FALSE, v_super, v_note, v_answers, NOW())
   ON CONFLICT (from_user_id, to_user_id) DO UPDATE
     SET is_pass = FALSE,
         is_super = arrow_likes.is_super OR EXCLUDED.is_super,
         note = COALESCE(EXCLUDED.note, arrow_likes.note),
+        answers = COALESCE(EXCLUDED.answers, arrow_likes.answers),
         created_at = NOW();
 
   -- The trigger below creates the match row if this completed a mutual like.
@@ -1411,7 +1584,7 @@ BEGIN
   INSERT INTO public.arrow_likes (from_user_id, to_user_id, is_pass, created_at)
   VALUES (v_actor, p_target_id, TRUE, NOW())
   ON CONFLICT (from_user_id, to_user_id) DO UPDATE
-    SET is_pass = TRUE, is_super = FALSE, note = NULL, created_at = NOW();
+    SET is_pass = TRUE, is_super = FALSE, note = NULL, answers = NULL, created_at = NOW();
 
   RETURN jsonb_build_object('success', TRUE);
 END;
@@ -1439,7 +1612,7 @@ BEGIN
     AND created_at > NOW() - INTERVAL '24 hours';
 
   IF v_used >= public.arrow_plan_limit(v_plan, 'daily_rewinds') THEN
-    RAISE EXCEPTION 'You have used today''s free rewind. ARROW Plus rewinds without limit.'
+    RAISE EXCEPTION 'You have used today''s free rewind. Finderr Plus rewinds without limit.'
       USING ERRCODE = 'P0402';
   END IF;
 
@@ -1469,7 +1642,7 @@ BEGIN
 END;
 $$;
 
--- 7.11a Unsend an arrow: take back one you sent, before it becomes a match.
+-- 7.11a Unsend a spark: take back one you sent, before it becomes a match.
 -- It disappears from their likes, and they are never told. After a match
 -- this refuses — that is an unmatch, which also ends the conversation.
 CREATE OR REPLACE FUNCTION public.arrow_unsend_arrow(p_target_id UUID)
@@ -1487,7 +1660,7 @@ BEGIN
   WHERE from_user_id = v_actor AND to_user_id = p_target_id AND is_pass = FALSE;
 
   IF NOT FOUND THEN
-    RETURN jsonb_build_object('success', FALSE, 'error', 'There is no arrow to take back');
+    RETURN jsonb_build_object('success', FALSE, 'error', 'There is no spark to take back');
   END IF;
 
   IF public.arrow_is_matched(v_actor, p_target_id) THEN
@@ -1503,7 +1676,7 @@ END;
 $$;
 
 -- 7.12a Bring back everyone you passed on, now rather than after the
--- cooldown. Only your own passes are touched; arrows you sent are kept.
+-- cooldown. Only your own passes are touched; sparks you sent are kept.
 CREATE OR REPLACE FUNCTION public.arrow_clear_passes()
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -1522,7 +1695,7 @@ BEGIN
 END;
 $$;
 
--- 7.12b Your swipe history: everyone you have passed on or sent an arrow to,
+-- 7.12b Your swipe history: everyone you have passed on or sent a spark to,
 -- newest first, so nobody you have seen is lost for good. Each person is
 -- still subject to the visibility rule — someone who blocked you, was banned,
 -- paused their profile or went incognito drops out of your history too.
@@ -1555,10 +1728,10 @@ BEGIN
 END;
 $$;
 
--- 7.13 Arrows you received, super arrows and newest first. Each entry carries
+-- 7.13 Sparks you received, super sparks and newest first. Each entry carries
 -- the sender's safe profile, so the likes screen needs no per-row lookup.
 --
--- Seeing who liked you is a Plus feature. On the free plan only super arrows
+-- Seeing who liked you is a Plus feature. On the free plan only super sparks
 -- are revealed — someone who spent one wanted to be seen — and the rest are
 -- returned as a count. The identities are withheld HERE, not blurred in the
 -- client: a free account receives no id, photo or name for a hidden like, and
@@ -1576,7 +1749,7 @@ DECLARE
   v_hidden INT;
 BEGIN
   WITH pending AS (
-    SELECT l.from_user_id, l.is_super, l.note, l.created_at
+    SELECT l.from_user_id, l.is_super, l.note, l.answers, l.created_at
     FROM public.arrow_likes l
     JOIN public.arrow_profiles p ON p.id = l.from_user_id
     WHERE l.to_user_id = v_actor
@@ -1604,6 +1777,7 @@ BEGIN
                  'profile', public.arrow_safe_profile(v.from_user_id),
                  'isSuper', v.is_super,
                  'note', v.note,
+                 'answers', v.answers,
                  'createdAt', v.created_at
                ) ORDER BY v.ord)
       FROM visible v
@@ -1619,7 +1793,7 @@ BEGIN
 END;
 $$;
 
--- 7.14 Arrows you sent that are still pending.
+-- 7.14 Sparks you sent that are still pending.
 CREATE OR REPLACE FUNCTION public.arrow_get_sent_likes()
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -1637,6 +1811,7 @@ BEGIN
           'profile', public.arrow_safe_profile(l.to_user_id),
           'isSuper', l.is_super,
           'note', l.note,
+          'answers', l.answers,
           'createdAt', l.created_at
         ) AS entry,
         ROW_NUMBER() OVER (ORDER BY l.created_at DESC) AS ord
@@ -1682,6 +1857,15 @@ BEGIN
           'unreadCount', (
             SELECT COUNT(*) FROM public.arrow_messages msg
             WHERE msg.match_id = m.id AND msg.sender_id <> v_actor AND msg.read_at IS NULL
+          ),
+          -- Answers to each other's "ask me first" questions, still encrypted.
+          'myAnswers', (
+            SELECT l.answers FROM public.arrow_likes l
+            WHERE l.from_user_id = v_actor AND l.to_user_id = p.id
+          ),
+          'theirAnswers', (
+            SELECT l.answers FROM public.arrow_likes l
+            WHERE l.from_user_id = p.id AND l.to_user_id = v_actor
           ),
           'lastMessage', (
             SELECT jsonb_build_object(
@@ -1778,7 +1962,7 @@ BEGIN
 END;
 $$;
 
--- 7.18 In-app messaging. ARROW's original flow handed out a phone number the
+-- 7.18 In-app messaging. Finderr's original flow handed out a phone number the
 -- moment two people matched; that is a lot of trust to ask for from a
 -- stranger. Messaging lets people talk first and share a number only if they
 -- choose to. Every call proves match membership first.
@@ -1803,12 +1987,21 @@ BEGIN
     RAISE EXCEPTION 'Message cannot be empty' USING ERRCODE = '22023';
   END IF;
 
-  IF char_length(v_clean) > 2000 THEN
+  IF char_length(v_clean) > 12000 THEN
     RAISE EXCEPTION 'Message is too long (2000 characters max)' USING ERRCODE = '22023';
   END IF;
 
   IF public.arrow_is_blocked_pair(v_actor, v_partner) THEN
     RAISE EXCEPTION 'Match not found' USING ERRCODE = '42501';
+  END IF;
+
+  -- Chat is end-to-end encrypted. Plaintext is refused rather than stored, so
+  -- an old or modified client cannot quietly downgrade a conversation.
+  IF NOT public.arrow_envelope_ok(v_clean, v_actor, v_partner) THEN
+    IF public.arrow_current_key_id(v_partner) IS NULL THEN
+      RAISE EXCEPTION 'Secure chat starts once they next open Finderr' USING ERRCODE = '55000';
+    END IF;
+    RAISE EXCEPTION 'Messages must be end-to-end encrypted. Refresh Finderr and try again.' USING ERRCODE = '22023';
   END IF;
 
   SELECT COUNT(*) INTO v_recent
@@ -2252,7 +2445,7 @@ BEGIN
       AND status IN ('active', 'trialing', 'past_due')
       AND NOT cancel_at_period_end
   ) THEN
-    RAISE EXCEPTION 'Cancel your ARROW subscription in Settings → Membership before deleting your account.'
+    RAISE EXCEPTION 'Cancel your Finderr subscription in Settings → Membership before deleting your account.'
       USING ERRCODE = '55000';
   END IF;
 
@@ -2312,7 +2505,8 @@ BEGIN
       'arrowNotes',      public.arrow_plan_has(v_plan, 'arrow_notes'),
       'readReceipts',    public.arrow_plan_has(v_plan, 'read_receipts'),
       'incognito',       public.arrow_plan_has(v_plan, 'incognito'),
-      'boost',           public.arrow_plan_has(v_plan, 'boost')
+      'boost',           public.arrow_plan_has(v_plan, 'boost'),
+      'gamePacks',       public.arrow_plan_has(v_plan, 'game_packs')
     ),
     'boostActiveUntil', v_boost.ends_at,
     'boostsRemaining', GREATEST(0, public.arrow_plan_limit(v_plan, 'weekly_boosts') - v_boosts_used)
@@ -2378,7 +2572,7 @@ DECLARE
   v_used INT;
 BEGIN
   IF NOT public.arrow_plan_has(v_plan, 'boost') THEN
-    RAISE EXCEPTION 'Boosts are part of ARROW Premium' USING ERRCODE = 'P0402';
+    RAISE EXCEPTION 'Boosts are part of Finderr Premium' USING ERRCODE = 'P0402';
   END IF;
 
   IF EXISTS (SELECT 1 FROM public.arrow_profiles WHERE id = v_actor AND (is_paused OR is_incognito)) THEN
@@ -2414,7 +2608,7 @@ DECLARE
   v_actor UUID := public.arrow_actor();
 BEGIN
   IF COALESCE(p_enabled, FALSE) AND NOT public.arrow_has_feature(v_actor, 'incognito') THEN
-    RAISE EXCEPTION 'Incognito is part of ARROW Premium' USING ERRCODE = 'P0402';
+    RAISE EXCEPTION 'Incognito is part of Finderr Premium' USING ERRCODE = 'P0402';
   END IF;
 
   UPDATE public.arrow_profiles
@@ -2466,7 +2660,7 @@ $$;
 -- The old Stripe entry point, if an earlier draft of this schema installed it.
 DROP FUNCTION IF EXISTS public.arrow_apply_billing_event(UUID, TEXT, TEXT, TIMESTAMPTZ, BOOLEAN, TEXT, TEXT);
 
--- Which ARROW account a Paystack customer belongs to: by the customer code we
+-- Which Finderr account a Paystack customer belongs to: by the customer code we
 -- stored on their first payment, else by their sign-in email.
 CREATE OR REPLACE FUNCTION public.arrow_billing_user(p_customer_code TEXT, p_email TEXT)
 RETURNS UUID
@@ -2639,11 +2833,479 @@ BEGIN
 END;
 $$;
 
+-- 7.25 END-TO-END ENCRYPTION --------------------------------------------------
+-- Messages, game answers and "ask me first" answers are encrypted on the
+-- sender's device with a key only the two people can derive (ECDH P-256 →
+-- HKDF → AES-256-GCM), and arrive here as an envelope:
+--
+--   e2e1.<sender key id>.<recipient key id>.<iv>.<ciphertext>
+--
+-- The database never sees plaintext and cannot produce it. What it CAN still
+-- do — and does — is refuse anything that is not such an envelope, and check
+-- that the envelope was written between the two people's current keys, so a
+-- modified client cannot quietly downgrade a conversation to plaintext or
+-- send something the other person will never be able to open.
+
+-- Whether a value has the shape of an encrypted envelope.
+CREATE OR REPLACE FUNCTION public.arrow_is_sealed(p_value TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT COALESCE(
+    p_value ~ '^e2e1\.[A-Za-z0-9_-]{16,64}\.[A-Za-z0-9_-]{16,64}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{22,}$',
+    FALSE
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.arrow_current_key_id(p_user UUID)
+RETURNS TEXT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT key_id FROM public.arrow_user_keys
+  WHERE user_id = p_user AND retired_at IS NULL;
+$$;
+
+-- An envelope from p_from to p_to, written under both people's current keys.
+CREATE OR REPLACE FUNCTION public.arrow_envelope_ok(p_value TEXT, p_from UUID, p_to UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.arrow_is_sealed(p_value)
+     AND split_part(p_value, '.', 2) = public.arrow_current_key_id(p_from)
+     AND split_part(p_value, '.', 3) = public.arrow_current_key_id(p_to);
+$$;
+
+-- Publish a new key pair for yourself. The public key is rebuilt from its four
+-- fields so nothing else can ride along — in particular a private `d` — and
+-- the wrapped private key is stored as an opaque blob the server cannot open.
+-- Your previous key, if any, is retired, not deleted.
+CREATE OR REPLACE FUNCTION public.arrow_set_my_key(
+  p_key_id TEXT,
+  p_public_key JSONB,
+  p_wrapped_key JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_recent INT;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.arrow_profiles WHERE id = v_actor) THEN
+    RAISE EXCEPTION 'Create your profile first' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_key_id IS NULL OR p_key_id !~ '^[A-Za-z0-9_-]{16,64}$' THEN
+    RAISE EXCEPTION 'Invalid key id' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_public_key IS NULL
+     OR p_public_key ? 'd'
+     OR p_public_key->>'kty' IS DISTINCT FROM 'EC'
+     OR p_public_key->>'crv' IS DISTINCT FROM 'P-256'
+     OR COALESCE(p_public_key->>'x', '') !~ '^[A-Za-z0-9_-]{43}$'
+     OR COALESCE(p_public_key->>'y', '') !~ '^[A-Za-z0-9_-]{43}$' THEN
+    RAISE EXCEPTION 'Invalid public key' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_wrapped_key IS NULL
+     OR COALESCE(p_wrapped_key->>'salt', '') !~ '^[A-Za-z0-9_-]{22,64}$'
+     OR COALESCE(p_wrapped_key->>'iv', '') !~ '^[A-Za-z0-9_-]{16}$'
+     OR COALESCE(p_wrapped_key->>'ct', '') !~ '^[A-Za-z0-9_-]{22,}$'
+     OR char_length(p_wrapped_key->>'ct') > 2000
+     OR COALESCE(p_wrapped_key->>'iter', '') !~ '^[0-9]{6,7}$'
+     OR (p_wrapped_key->>'iter')::INT < 310000 THEN
+    RAISE EXCEPTION 'Invalid wrapped key' USING ERRCODE = '22023';
+  END IF;
+
+  -- A reset is a real event (old chats stop opening on this account), so it
+  -- is not something to do in a loop.
+  SELECT COUNT(*) INTO v_recent FROM public.arrow_user_keys
+  WHERE user_id = v_actor AND created_at > NOW() - INTERVAL '24 hours';
+  IF v_recent >= 5 THEN
+    RAISE EXCEPTION 'Too many secure chat resets today. Try again tomorrow.' USING ERRCODE = '53400';
+  END IF;
+
+  UPDATE public.arrow_user_keys SET retired_at = NOW()
+  WHERE user_id = v_actor AND retired_at IS NULL;
+
+  INSERT INTO public.arrow_user_keys (key_id, user_id, public_key, wrapped_key)
+  VALUES (
+    p_key_id,
+    v_actor,
+    jsonb_build_object('kty', 'EC', 'crv', 'P-256', 'x', p_public_key->>'x', 'y', p_public_key->>'y'),
+    jsonb_build_object(
+      'v', 1,
+      'salt', p_wrapped_key->>'salt',
+      'iv', p_wrapped_key->>'iv',
+      'ct', p_wrapped_key->>'ct',
+      'iter', (p_wrapped_key->>'iter')::INT
+    )
+  );
+
+  RETURN public.arrow_get_my_key();
+END;
+$$;
+
+-- Change the passcode: same key pair, re-wrapped on the device.
+CREATE OR REPLACE FUNCTION public.arrow_rewrap_my_key(p_key_id TEXT, p_wrapped_key JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+BEGIN
+  IF p_wrapped_key IS NULL
+     OR COALESCE(p_wrapped_key->>'salt', '') !~ '^[A-Za-z0-9_-]{22,64}$'
+     OR COALESCE(p_wrapped_key->>'iv', '') !~ '^[A-Za-z0-9_-]{16}$'
+     OR COALESCE(p_wrapped_key->>'ct', '') !~ '^[A-Za-z0-9_-]{22,}$'
+     OR char_length(p_wrapped_key->>'ct') > 2000
+     OR COALESCE(p_wrapped_key->>'iter', '') !~ '^[0-9]{6,7}$'
+     OR (p_wrapped_key->>'iter')::INT < 310000 THEN
+    RAISE EXCEPTION 'Invalid wrapped key' USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE public.arrow_user_keys
+  SET wrapped_key = jsonb_build_object(
+        'v', 1,
+        'salt', p_wrapped_key->>'salt',
+        'iv', p_wrapped_key->>'iv',
+        'ct', p_wrapped_key->>'ct',
+        'iter', (p_wrapped_key->>'iter')::INT
+      )
+  WHERE key_id = p_key_id AND user_id = v_actor AND retired_at IS NULL;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Key not found' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN public.arrow_get_my_key();
+END;
+$$;
+
+-- Your current key, wrapped. Only ever your own.
+CREATE OR REPLACE FUNCTION public.arrow_get_my_key()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+BEGIN
+  RETURN (
+    SELECT jsonb_build_object(
+      'keyId', k.key_id,
+      'publicKey', k.public_key,
+      'wrappedKey', k.wrapped_key,
+      'createdAt', k.created_at
+    )
+    FROM public.arrow_user_keys k
+    WHERE k.user_id = v_actor AND k.retired_at IS NULL
+  );
+END;
+$$;
+
+-- Someone's public keys, newest first: the current one to write to them, and
+-- retired ones to read what was written before a reset. Only for people you
+-- may see, plus anyone you already sent a spark to (so your own answers stay
+-- readable to you even if they later pause). Public keys are not secret, but
+-- there is no reason to let anyone enumerate who uses secure chat.
+CREATE OR REPLACE FUNCTION public.arrow_get_public_keys(p_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+BEGIN
+  IF p_user_id IS NULL THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  IF NOT (
+    public.arrow_can_view_profile(v_actor, p_user_id)
+    OR (
+      EXISTS (
+        SELECT 1 FROM public.arrow_likes l
+        WHERE l.from_user_id = v_actor AND l.to_user_id = p_user_id AND l.is_pass = FALSE
+      )
+      AND NOT public.arrow_is_blocked_pair(v_actor, p_user_id)
+    )
+  ) THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  RETURN COALESCE((
+    SELECT jsonb_agg(
+             jsonb_build_object(
+               'keyId', k.key_id,
+               'publicKey', k.public_key,
+               'current', k.retired_at IS NULL,
+               'createdAt', k.created_at
+             ) ORDER BY k.created_at DESC)
+    FROM (
+      SELECT * FROM public.arrow_user_keys
+      WHERE user_id = p_user_id
+      ORDER BY created_at DESC
+      LIMIT 20
+    ) k
+  ), '[]'::jsonb);
+END;
+$$;
+
+-- 7.26 ASK ME FIRST -----------------------------------------------------------
+-- Your questions are public; the answers come to you encrypted. Setting
+-- questions needs a secure chat key, or the answers could never be opened.
+CREATE OR REPLACE FUNCTION public.arrow_set_ask_first(p_questions TEXT[])
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_clean TEXT[];
+BEGIN
+  SELECT COALESCE(array_agg(q ORDER BY ord), '{}')
+  INTO v_clean
+  FROM (
+    SELECT btrim(q) AS q, ord
+    FROM unnest(COALESCE(p_questions, '{}')) WITH ORDINALITY AS t(q, ord)
+    WHERE btrim(COALESCE(q, '')) <> ''
+  ) s;
+
+  IF cardinality(v_clean) > 3 THEN
+    RAISE EXCEPTION 'Ask up to three questions' USING ERRCODE = '22023';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM unnest(v_clean) q WHERE char_length(q) NOT BETWEEN 3 AND 120) THEN
+    RAISE EXCEPTION 'Keep each question between 3 and 120 characters' USING ERRCODE = '22023';
+  END IF;
+
+  IF cardinality(v_clean) > 0 AND public.arrow_current_key_id(v_actor) IS NULL THEN
+    RAISE EXCEPTION 'Set up secure chat first, so answers reach only you' USING ERRCODE = '55000';
+  END IF;
+
+  UPDATE public.arrow_profiles SET ask_first = v_clean, updated_at = NOW() WHERE id = v_actor;
+
+  RETURN public.arrow_get_my_profile();
+END;
+$$;
+
+-- 7.27 DATE GAMES ---------------------------------------------------------------
+-- One round, from the caller's side. The rule that makes a round fair lives
+-- here: the partner's answer is only included once the caller has answered.
+CREATE OR REPLACE FUNCTION public.arrow_game_json(p_game_id UUID, p_actor UUID)
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT jsonb_build_object(
+    'id', g.id,
+    'matchId', g.match_id,
+    'kind', g.kind,
+    'pack', g.pack,
+    'prompt', c.prompt,
+    'options', COALESCE(to_jsonb(c.options), '[]'::jsonb),
+    'startedByMe', g.started_by = p_actor,
+    'setup', g.setup,
+    'myAnswer', mine.answer,
+    'theyAnswered', theirs.answer IS NOT NULL,
+    'theirAnswer', CASE WHEN mine.answer IS NOT NULL THEN theirs.answer END,
+    'createdAt', g.created_at
+  )
+  FROM public.arrow_games g
+  LEFT JOIN public.arrow_game_cards c ON c.id = g.card_id
+  LEFT JOIN public.arrow_game_answers mine ON mine.game_id = g.id AND mine.user_id = p_actor
+  LEFT JOIN public.arrow_game_answers theirs ON theirs.game_id = g.id AND theirs.user_id <> p_actor
+  WHERE g.id = p_game_id;
+$$;
+
+-- Start a round. For "pick" and "ask" the server deals a card from the pack
+-- (one this pair has not played yet, when there is one). For two truths and a
+-- lie the starter brings the encrypted statements and, as their own sealed
+-- answer, which one is the lie.
+CREATE OR REPLACE FUNCTION public.arrow_start_game(
+  p_match_id UUID,
+  p_kind TEXT,
+  p_pack TEXT DEFAULT 'starter',
+  p_setup TEXT DEFAULT NULL,
+  p_answer TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_partner UUID := public.arrow_match_partner(v_actor, p_match_id);
+  v_pack TEXT := COALESCE(NULLIF(btrim(p_pack), ''), 'starter');
+  v_card TEXT;
+  v_open INT;
+  v_recent INT;
+  v_id UUID;
+BEGIN
+  IF public.arrow_is_blocked_pair(v_actor, v_partner) THEN
+    RAISE EXCEPTION 'Match not found' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_kind IS NULL OR p_kind NOT IN ('pick', 'ask', 'truths') THEN
+    RAISE EXCEPTION 'That game is not available' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_kind = 'truths' THEN
+    v_pack := 'starter';
+  ELSIF v_pack NOT IN ('starter', 'deep', 'future') THEN
+    RAISE EXCEPTION 'That pack is not available' USING ERRCODE = '22023';
+  END IF;
+
+  IF v_pack <> 'starter' AND NOT public.arrow_has_feature(v_actor, 'game_packs') THEN
+    RAISE EXCEPTION 'Deep Talk and Future Us are part of Finderr Plus' USING ERRCODE = 'P0402';
+  END IF;
+
+  SELECT COUNT(*) INTO v_open
+  FROM public.arrow_games g
+  WHERE g.match_id = p_match_id
+    AND (SELECT COUNT(*) FROM public.arrow_game_answers a WHERE a.game_id = g.id) < 2;
+  IF v_open >= 6 THEN
+    RAISE EXCEPTION 'Finish a round or two before starting another' USING ERRCODE = '53400';
+  END IF;
+
+  SELECT COUNT(*) INTO v_recent FROM public.arrow_games
+  WHERE started_by = v_actor AND created_at > NOW() - INTERVAL '1 hour';
+  IF v_recent >= 40 THEN
+    RAISE EXCEPTION 'You are starting games too quickly. Try again shortly.' USING ERRCODE = '53400';
+  END IF;
+
+  IF p_kind = 'truths' THEN
+    IF NOT public.arrow_envelope_ok(p_setup, v_actor, v_partner)
+       OR NOT public.arrow_envelope_ok(p_answer, v_actor, v_partner) THEN
+      RAISE EXCEPTION 'Game answers must be end-to-end encrypted' USING ERRCODE = '22023';
+    END IF;
+  ELSE
+    IF p_setup IS NOT NULL OR p_answer IS NOT NULL THEN
+      RAISE EXCEPTION 'This game is answered after it starts' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT c.id INTO v_card
+    FROM public.arrow_game_cards c
+    WHERE c.pack = v_pack AND c.kind = p_kind
+    ORDER BY
+      EXISTS (SELECT 1 FROM public.arrow_games g WHERE g.match_id = p_match_id AND g.card_id = c.id),
+      random()
+    LIMIT 1;
+
+    IF v_card IS NULL THEN
+      RAISE EXCEPTION 'That pack is not available' USING ERRCODE = '22023';
+    END IF;
+  END IF;
+
+  INSERT INTO public.arrow_games (match_id, kind, pack, card_id, started_by, setup)
+  VALUES (p_match_id, p_kind, v_pack, v_card, v_actor, p_setup)
+  RETURNING id INTO v_id;
+
+  IF p_kind = 'truths' THEN
+    INSERT INTO public.arrow_game_answers (game_id, user_id, answer) VALUES (v_id, v_actor, p_answer);
+  END IF;
+
+  UPDATE public.arrow_matches SET last_interaction_at = NOW() WHERE id = p_match_id;
+
+  RETURN public.arrow_game_json(v_id, v_actor);
+END;
+$$;
+
+-- Answer a round. Once, and final: changing an answer after seeing theirs
+-- would defeat the point of sealing it.
+CREATE OR REPLACE FUNCTION public.arrow_answer_game(p_game_id UUID, p_answer TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_match UUID;
+  v_partner UUID;
+BEGIN
+  SELECT match_id INTO v_match FROM public.arrow_games WHERE id = p_game_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Game not found' USING ERRCODE = '42501';
+  END IF;
+
+  -- Raises unless the caller is in this game's match.
+  v_partner := public.arrow_match_partner(v_actor, v_match);
+
+  IF public.arrow_is_blocked_pair(v_actor, v_partner) THEN
+    RAISE EXCEPTION 'Game not found' USING ERRCODE = '42501';
+  END IF;
+
+  IF NOT public.arrow_envelope_ok(p_answer, v_actor, v_partner) THEN
+    RAISE EXCEPTION 'Game answers must be end-to-end encrypted' USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.arrow_game_answers (game_id, user_id, answer)
+  VALUES (p_game_id, v_actor, p_answer)
+  ON CONFLICT (game_id, user_id) DO NOTHING;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'You already answered this one' USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE public.arrow_matches SET last_interaction_at = NOW() WHERE id = v_match;
+
+  RETURN public.arrow_game_json(p_game_id, v_actor);
+END;
+$$;
+
+-- The rounds in one match, newest first.
+CREATE OR REPLACE FUNCTION public.arrow_get_games(p_match_id UUID, p_limit INT DEFAULT 30)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_actor UUID := public.arrow_actor();
+  v_partner UUID := public.arrow_match_partner(v_actor, p_match_id);
+  v_limit INT := LEAST(GREATEST(COALESCE(p_limit, 30), 1), 100);
+BEGIN
+  IF public.arrow_is_blocked_pair(v_actor, v_partner) THEN
+    RAISE EXCEPTION 'Match not found' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN COALESCE((
+    SELECT jsonb_agg(public.arrow_game_json(g.id, v_actor) ORDER BY g.created_at DESC)
+    FROM (
+      SELECT id, created_at FROM public.arrow_games
+      WHERE match_id = p_match_id
+      ORDER BY created_at DESC
+      LIMIT v_limit
+    ) g
+  ), '[]'::jsonb);
+END;
+$$;
+
 -- ==============================================================================
 -- 8. TRIGGERS
 -- ==============================================================================
 
--- 8.1 Mutual arrows become a match, server-side. Neither client decides this.
+-- 8.1 Mutual sparks become a match, server-side. Neither client decides this.
 CREATE OR REPLACE FUNCTION public.arrow_handle_mutual_like_match()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -2763,6 +3425,10 @@ ALTER TABLE public.arrow_subscriptions     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.arrow_boosts            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.arrow_usage             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.arrow_payments          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.arrow_user_keys         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.arrow_game_cards        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.arrow_games             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.arrow_game_answers      ENABLE ROW LEVEL SECURITY;
 
 -- Remove every policy this project has ever defined on these tables, so a
 -- re-run cannot leave a stale, more permissive policy behind.
@@ -2777,7 +3443,8 @@ BEGIN
         'arrow_profiles', 'arrow_age_verifications', 'arrow_profile_photos',
         'arrow_preferences', 'arrow_likes', 'arrow_matches', 'arrow_messages',
         'arrow_blocks', 'arrow_reports', 'arrow_subscriptions', 'arrow_boosts',
-        'arrow_usage', 'arrow_payments'
+        'arrow_usage', 'arrow_payments', 'arrow_user_keys', 'arrow_game_cards',
+        'arrow_games', 'arrow_game_answers'
       )
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
@@ -2807,7 +3474,7 @@ CREATE POLICY "arrow_preferences_select_own"
 ON public.arrow_preferences FOR SELECT TO authenticated
 USING (auth.uid() = user_id);
 
--- 9.5 Likes: only the ones you sent. Arrows pointed AT you are deliberately
+-- 9.5 Likes: only the ones you sent. Sparks pointed AT you are deliberately
 -- not readable here — they arrive through arrow_get_received_likes, which
 -- decides what your plan reveals. Allowing `to_user_id = auth.uid()` would
 -- let any free account list everyone who liked it with one table query.
@@ -2851,6 +3518,9 @@ CREATE POLICY "arrow_usage_select_own"
 ON public.arrow_usage FOR SELECT TO authenticated
 USING (auth.uid() = user_id);
 
+-- 9.9a Keys and games: RLS on, no policies at all. Every read goes through
+-- arrow_get_my_key / arrow_get_public_keys / arrow_get_games.
+
 -- 9.10 Table privileges: read-only for clients, belt and braces alongside RLS.
 DO $$
 DECLARE t TEXT;
@@ -2859,11 +3529,15 @@ BEGIN
     'arrow_profiles', 'arrow_age_verifications', 'arrow_profile_photos',
     'arrow_preferences', 'arrow_likes', 'arrow_matches', 'arrow_messages',
     'arrow_blocks', 'arrow_reports', 'arrow_subscriptions', 'arrow_boosts',
-    'arrow_usage', 'arrow_payments'
+    'arrow_usage', 'arrow_payments', 'arrow_user_keys', 'arrow_game_cards',
+    'arrow_games', 'arrow_game_answers'
   ] LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon, authenticated', t);
-    -- Billing tables are read through RPCs only.
-    IF t NOT IN ('arrow_subscriptions', 'arrow_payments') THEN
+    -- Billing, key and game tables are read through RPCs only: keys carry a
+    -- wrapped private key, and a game answer must stay sealed until you have
+    -- given yours, which a table read would skip straight past.
+    IF t NOT IN ('arrow_subscriptions', 'arrow_payments', 'arrow_user_keys',
+                 'arrow_game_cards', 'arrow_games', 'arrow_game_answers') THEN
       EXECUTE format('GRANT SELECT ON TABLE public.%I TO authenticated', t);
     END IF;
   END LOOP;
@@ -3029,6 +3703,7 @@ DECLARE
   r RECORD;
   v_current TEXT[] := ARRAY[
     'arrow_actor()',
+    'arrow_answer_game(p_game_id uuid, p_answer text)',
     'arrow_add_photo(p_storage_path text, p_photo_url text)',
     'arrow_apply_card_subscription(p_user_id uuid, p_plan text, p_status text, p_period_end timestamp with time zone, p_customer_code text, p_subscription_code text, p_email_token text)',
     'arrow_billing_user(p_customer_code text, p_email text)',
@@ -3037,20 +3712,26 @@ DECLARE
     'arrow_can_view_profile_photo(p_profile_id uuid)',
     'arrow_clear_passes()',
     'arrow_complete_age_verification(p_date_of_birth date)',
+    'arrow_current_key_id(p_user uuid)',
     'arrow_delete_my_account()',
     'arrow_delete_photo(p_storage_path text)',
     'arrow_effective_plan(p_user uuid)',
+    'arrow_envelope_ok(p_value text, p_from uuid, p_to uuid)',
+    'arrow_game_json(p_game_id uuid, p_actor uuid)',
     'arrow_get_blocked_profiles()',
     'arrow_get_discover_feed(p_age_min integer, p_age_max integer, p_genders text[], p_location text, p_interests text[], p_looking_for text[], p_limit integer)',
+    'arrow_get_games(p_match_id uuid, p_limit integer)',
     'arrow_get_like_quota()',
     'arrow_get_match_whatsapp_contact(p_match_id uuid)',
     'arrow_get_matches()',
     'arrow_get_messages(p_match_id uuid, p_limit integer, p_before timestamp with time zone)',
     'arrow_get_my_payments()',
     'arrow_get_my_plan()',
+    'arrow_get_my_key()',
     'arrow_get_my_preferences()',
     'arrow_get_my_profile()',
     'arrow_get_profile(p_profile_id uuid)',
+    'arrow_get_public_keys(p_user_id uuid)',
     'arrow_get_received_likes()',
     'arrow_get_sent_likes()',
     'arrow_get_swipe_history()',
@@ -3058,10 +3739,11 @@ DECLARE
     'arrow_handle_mutual_like_match()',
     'arrow_has_feature(p_user uuid, p_feature text)',
     'arrow_is_blocked_pair(p_a uuid, p_b uuid)',
+    'arrow_is_sealed(p_value text)',
     'arrow_is_match_member(p_match_id uuid)',
     'arrow_is_matched(p_a uuid, p_b uuid)',
     'arrow_is_unlimited(p_plan arrow_plan, p_key text)',
-    'arrow_like_profile(p_target_id uuid, p_is_super boolean, p_note text)',
+    'arrow_like_profile(p_target_id uuid, p_is_super boolean, p_note text, p_answers text)',
     'arrow_limit(p_key text)',
     'arrow_mark_messages_read(p_match_id uuid)',
     'arrow_match_partner(p_actor uuid, p_match_id uuid)',
@@ -3072,15 +3754,19 @@ DECLARE
     'arrow_record_payment(p_reference text, p_user_id uuid, p_plan text, p_method text, p_amount_minor bigint, p_currency text, p_customer_code text, p_pass_days integer)',
     'arrow_recent_usage(p_user uuid, p_kind text)',
     'arrow_reorder_photos(p_paths text[])',
+    'arrow_rewrap_my_key(p_key_id text, p_wrapped_key jsonb)',
     'arrow_report_user(p_target_id uuid, p_reason text, p_details text, p_also_block boolean)',
     'arrow_rewind_last_swipe()',
     'arrow_safe_profile(p_profile_id uuid)',
     'arrow_send_message(p_match_id uuid, p_body text)',
+    'arrow_set_ask_first(p_questions text[])',
     'arrow_set_incognito(p_enabled boolean)',
+    'arrow_set_my_key(p_key_id text, p_public_key jsonb, p_wrapped_key jsonb)',
     'arrow_set_my_preferences(p_age_min integer, p_age_max integer, p_gender_preference text[], p_location_preference text, p_max_distance_km integer, p_intentions text[])',
     'arrow_set_visibility(p_is_paused boolean, p_show_online_status boolean)',
     'arrow_set_whatsapp(p_allow boolean, p_number text)',
     'arrow_start_boost()',
+    'arrow_start_game(p_match_id uuid, p_kind text, p_pack text, p_setup text, p_answer text)',
     'arrow_start_trial()',
     'arrow_touch_activity()',
     'arrow_touch_updated_at()',
@@ -3099,7 +3785,7 @@ BEGIN
   LOOP
     IF NOT (r.ident = ANY(v_current)) THEN
       EXECUTE format('DROP FUNCTION IF EXISTS %s CASCADE', r.sig);
-      RAISE NOTICE 'ARROW: removed outdated function %', r.ident;
+      RAISE NOTICE 'Finderr: removed outdated function %', r.ident;
     END IF;
   END LOOP;
 END $$;
@@ -3156,6 +3842,14 @@ DECLARE
     'arrow_clear_passes',
     'arrow_get_swipe_history',
     'arrow_unsend_arrow',
+    'arrow_set_my_key',
+    'arrow_rewrap_my_key',
+    'arrow_get_my_key',
+    'arrow_get_public_keys',
+    'arrow_set_ask_first',
+    'arrow_start_game',
+    'arrow_answer_game',
+    'arrow_get_games',
     -- Evaluated inside the photo and storage RLS policies as the caller.
     'arrow_can_view_profile_photo',
     -- Evaluated inside the Realtime channel policies as the caller.
@@ -3216,19 +3910,19 @@ BEGIN
       WHERE n.nspname = 'public' AND c.relname = t.tablename AND c.relrowsecurity
     );
 
-  IF v_tables < 13 THEN
-    RAISE EXCEPTION 'ARROW install incomplete: expected 13 tables, found %', v_tables;
+  IF v_tables < 17 THEN
+    RAISE EXCEPTION 'Finderr install incomplete: expected 17 tables, found %', v_tables;
   END IF;
 
   -- Must equal the number of signatures in the 10.5 sweep list. Fewer means
   -- the sweep dropped a function that was missing from that list.
-  IF v_rpcs <> 60 THEN
-    RAISE EXCEPTION 'ARROW install inconsistent: expected 60 functions, found %. Update the 10.5 sweep list.', v_rpcs;
+  IF v_rpcs <> 72 THEN
+    RAISE EXCEPTION 'Finderr install inconsistent: expected 72 functions, found %. Update the 10.5 sweep list.', v_rpcs;
   END IF;
 
   IF v_unprotected IS NOT NULL THEN
-    RAISE EXCEPTION 'ARROW install unsafe: RLS missing on %', v_unprotected;
+    RAISE EXCEPTION 'Finderr install unsafe: RLS missing on %', v_unprotected;
   END IF;
 
-  RAISE NOTICE 'ARROW schema installed: % tables, % functions, RLS active on all.', v_tables, v_rpcs;
+  RAISE NOTICE 'Finderr schema installed: % tables, % functions, RLS active on all.', v_tables, v_rpcs;
 END $$;

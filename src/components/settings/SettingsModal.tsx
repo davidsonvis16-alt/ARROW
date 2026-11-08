@@ -7,6 +7,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Avatar } from '../ui/Avatar';
 import { SafetySection } from './SafetySection';
+import { DisplaySettings, SecureChatSettings } from './SecureAndDisplay';
 import { storageService } from '../../services/storageService';
 import { useToast } from '../ui/Toast';
 import { LegalDocType } from '../safety/LegalModal';
@@ -92,7 +93,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       variant="bottomSheet"
       maxWidth="md"
       title="Settings & Privacy"
-      subtitle="Manage your ARROW account preferences"
+      subtitle="Manage your Finderr account preferences"
     >
       <div className="space-y-6 pb-4">
         {/* Account Info Card */}
@@ -141,7 +142,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
                 <p className="text-[10px] text-[var(--color-stone-dark)]">
                   {planInfo.plan === 'free'
-                    ? 'See who likes you, unlimited arrows and more'
+                    ? 'See who likes you, unlimited sparks and more'
                     : planInfo.currentPeriodEnd
                       ? `${planInfo.renews ? 'Renews' : 'Ends'} ${new Date(planInfo.currentPeriodEnd).toLocaleDateString()}${
                           planInfo.paymentMethod === 'mpesa' ? ' · M-Pesa' : planInfo.paymentMethod === 'card' ? ' · card' : ''
@@ -169,7 +170,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="block text-xs font-bold text-[var(--color-ink)]">Incognito</span>
                 <span className="block text-[10px] text-[var(--color-stone-dark)]">
                   {planInfo.features.incognito
-                    ? 'Only people you send an arrow to can see you'
+                    ? 'Only people you send a spark to can see you'
                     : 'Premium: only people you like can see you'}
                 </span>
               </span>
@@ -189,6 +190,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
           </label>
         </div>
+
+        <SecureChatSettings />
+        <DisplaySettings />
 
         {/* Core Settings Menu */}
         <div className="space-y-1.5 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border-subtle)] p-2 divide-y divide-[var(--color-border-subtle)]">

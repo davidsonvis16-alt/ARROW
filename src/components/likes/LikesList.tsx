@@ -4,10 +4,11 @@ import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Heart, Compass, MapPin, ArrowLeft, ArrowRight, ShieldAlert, Star, Lock, Quote } from 'lucide-react';
 import { LikeEntry } from '../../types';
+import { ReceivedAnswers } from '../chat/AnswersCard';
 
 interface LikesListProps {
   likes: LikeEntry[];
-  /** Arrows you sent that have not been answered yet. */
+  /** Sparks you sent that have not been answered yet. */
   sentLikes?: LikeEntry[];
   /** Likes the server counted but did not identify (free plan). */
   hiddenCount?: number;
@@ -42,10 +43,10 @@ export const LikesList: React.FC<LikesListProps> = ({
         </div>
         <div className="space-y-1.5 max-w-xs">
           <h3 className="text-2xl font-black tracking-tight text-[var(--color-ink)]">
-            Incoming Arrows
+            Incoming Sparks
           </h3>
           <p className="text-xs text-[var(--color-stone-dark)] leading-relaxed">
-            Log in or create your profile to receive Arrows and connect directly with people who like you.
+            Log in or create your profile to receive Sparks and connect directly with people who like you.
           </p>
         </div>
         <div className="pt-2">
@@ -103,7 +104,7 @@ export const LikesList: React.FC<LikesListProps> = ({
       </div>
     ) : null;
 
-  // People you sent an arrow to. They leave your Discover deck once you send
+  // People you sent a spark to. They leave your Discover deck once you send
   // one, so this is where they stay visible while you wait for an answer.
   const sentSection =
     sentLikes.length > 0 ? (
@@ -111,7 +112,7 @@ export const LikesList: React.FC<LikesListProps> = ({
         <div>
           <h3 className="text-base font-black text-[var(--color-ink)] tracking-tight">Waiting on them</h3>
           <p className="text-xs text-[var(--color-stone-dark)]">
-            You sent {sentLikes.length === 1 ? 'an arrow' : 'arrows'} — if they send one back, it's a match.
+            You sent {sentLikes.length === 1 ? 'a spark' : 'sparks'} — if they send one back, it's a match.
           </p>
         </div>
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
@@ -161,7 +162,7 @@ export const LikesList: React.FC<LikesListProps> = ({
         <div>
           <h2 className="text-xl font-black text-[var(--color-ink)] tracking-tight">Likes</h2>
           <p className="text-xs text-[var(--color-stone-dark)]">
-            Nobody new has sent you an arrow yet. When they do, they appear here.
+            Nobody new has sent you a spark yet. When they do, they appear here.
           </p>
         </div>
         {sentSection}
@@ -205,7 +206,7 @@ export const LikesList: React.FC<LikesListProps> = ({
             Interested in You
           </h2>
           <p className="text-xs text-[var(--color-stone-dark)] font-medium">
-            {likes.length + hiddenCount} {likes.length + hiddenCount === 1 ? 'person' : 'people'} sent you an arrow
+            {likes.length + hiddenCount} {likes.length + hiddenCount === 1 ? 'person' : 'people'} sent you a spark
           </p>
         </div>
       </div>
@@ -213,7 +214,7 @@ export const LikesList: React.FC<LikesListProps> = ({
       {lockedCard}
 
       <div className="grid grid-cols-1 gap-4">
-        {likes.map(({ profile, isSuper, note }) => {
+        {likes.map(({ profile, isSuper, note, answers }) => {
           const photo = profile.photos[0];
           const monogramHue = profile.name
             .split('')
@@ -254,7 +255,7 @@ export const LikesList: React.FC<LikesListProps> = ({
                 {isSuper && (
                   <div className="absolute top-3.5 left-3.5 z-10 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--color-forest)] text-[var(--color-offwhite)] text-[10px] font-bold uppercase tracking-wider">
                     <Star size={11} />
-                    <span>Super arrow</span>
+                    <span>Super spark</span>
                   </div>
                 )}
 
@@ -295,6 +296,7 @@ export const LikesList: React.FC<LikesListProps> = ({
                     <p className="text-sm text-[var(--color-ink)] leading-snug">{note}</p>
                   </div>
                 )}
+                <ReceivedAnswers partnerId={profile.id} partnerName={profile.name} sealed={answers} />
                 {profile.bio && (
                   <p className="text-xs text-[var(--color-ink-soft)] line-clamp-2 leading-relaxed font-normal">
                     {profile.bio}

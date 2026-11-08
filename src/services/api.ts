@@ -1,8 +1,12 @@
 import {
+  AskFirstAnswer,
   BlockedProfile,
   ChatMessage,
   DatingPreferences,
   FilterState,
+  GameKind,
+  GamePack,
+  GameRound,
   HistoryEntry,
   LikeEntry,
   LikeQuota,
@@ -27,6 +31,8 @@ import { blockService } from './blockService';
 import { reportService } from './reportService';
 import { authService } from './authService';
 import { storageService } from './storageService';
+import { gameService } from './gameService';
+import { secureService } from './secureService';
 
 /**
  * The application's data layer.
@@ -36,6 +42,11 @@ import { storageService } from './storageService';
  * path the actor comes from storageService. Passing an actor id across this
  * boundary is what let a tampered client act as somebody else, so the
  * parameter no longer exists to be tampered with.
+ *
+ * Writes of private content — messages, game answers, answers to someone's
+ * questions — are encrypted here, on the device, before they leave it. The
+ * partner id passed alongside them only picks whose public key to encrypt to;
+ * the server still decides who you are.
  */
 
 function localActor(): string | null {
@@ -67,13 +78,23 @@ export const api = {
   },
 
   // -------------------------------------------------------------------- likes
-  async likeProfile(targetId: string, isSuper = false, note?: string): Promise<LikeResult> {
+  async likeProfile(
+    targetId: string,
+    isSuper = false,
+    note?: string,
+    answers?: AskFirstAnswer[]
+  ): Promise<LikeResult> {
     if (isSupabaseConfigured) {
+      if (answers?.length) {
+        return secureService.withSealed(targetId, JSON.stringify(answers), (sealed) =>
+          likeService.likeProfile(targetId, isSuper, note, sealed)
+        );
+      }
       return likeService.likeProfile(targetId, isSuper, note);
     }
 
     const actor = localActor();
-    if (!actor) throw new Error('Log in to send an arrow.');
+    if (!actor) throw new Error('Log in to send a spark.');
 
     const result = storageService.recordLike(actor, targetId, false);
     return {
@@ -175,11 +196,47 @@ export const api = {
     return [];
   },
 
-  async sendMessage(matchId: string, body: string): Promise<ChatMessage> {
+  /** Encrypts on this device, then sends. The server only ever sees ciphertext. */
+  async sendMessage(matchId: string, partnerId: string, body: string): Promise<ChatMessage> {
     if (isSupabaseConfigured) {
-      return messageService.sendMessage(matchId, body);
+      return secureService.withSealed(partnerId, body, (sealed) => messageService.sendMessage(matchId, sealed));
     }
     throw new Error('Messaging needs a connected account.');
+  },
+
+  // -------------------------------------------------------------------- games
+  async getGames(matchId: string): Promise<GameRound[]> {
+    if (isSupabaseConfigured) {
+      return gameService.getGames(matchId);
+    }
+    return [];
+  },
+
+  async startGame(matchId: string, kind: Exclude<GameKind, 'truths'>, pack: GamePack): Promise<GameRound> {
+    if (isSupabaseConfigured) {
+      return gameService.startGame(matchId, kind, pack);
+    }
+    throw new Error('Games need a connected account.');
+  },
+
+  /** Two truths and a lie: the statements and which one is the lie, both encrypted. */
+  async startTruths(matchId: string, partnerId: string, statements: string[], lie: number): Promise<GameRound> {
+    if (isSupabaseConfigured) {
+      const setup = await secureService.sealFor(partnerId, JSON.stringify({ statements }));
+      return secureService.withSealed(partnerId, JSON.stringify({ lie }), (answer) =>
+        gameService.startGame(matchId, 'truths', 'starter', setup, answer)
+      );
+    }
+    throw new Error('Games need a connected account.');
+  },
+
+  async answerGame(gameId: string, partnerId: string, answer: object): Promise<GameRound> {
+    if (isSupabaseConfigured) {
+      return secureService.withSealed(partnerId, JSON.stringify(answer), (sealed) =>
+        gameService.answerGame(gameId, sealed)
+      );
+    }
+    throw new Error('Games need a connected account.');
   },
 
   async markMessagesRead(matchId: string): Promise<void> {
@@ -326,7 +383,11 @@ export const api = {
   // ------------------------------------------------------------------ profile
   async updateProfile(data: Partial<UserProfile>): Promise<UserProfile> {
     if (isSupabaseConfigured) {
-      return profileService.updateProfile(data);
+      const { askFirst, ...rest } = data;
+      const updated = await profileService.updateProfile(rest);
+      const changed =
+        askFirst !== undefined && JSON.stringify(askFirst) !== JSON.stringify(updated.askFirst || []);
+      return changed ? profileService.setAskFirst(askFirst) : updated;
     }
 
     const actor = localActor();

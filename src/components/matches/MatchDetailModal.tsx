@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UserProfile, MatchWithProfile } from '../../types';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { ChatPanel } from '../chat/ChatPanel';
+import { GamesPanel, roundsWaitingOnMe } from '../games/GamesPanel';
 import { api } from '../../services/api';
 import { useToast } from '../ui/Toast';
-import { MessageCircle, MapPin, UserX, ShieldAlert, Lock, User } from 'lucide-react';
+import { MessageCircle, MapPin, UserX, ShieldAlert, Lock, User, Gamepad2 } from 'lucide-react';
 
 interface MatchDetailModalProps {
   matchItem: MatchWithProfile | null;
@@ -18,6 +19,9 @@ interface MatchDetailModalProps {
   currentUserId: string | null;
   hasReadReceipts?: boolean;
   onUpgrade?: () => void;
+  /** Plus: the Deep Talk and Future Us game packs. */
+  canUseGamePacks?: boolean;
+  onUpgradeGames?: () => void;
 }
 
 export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
@@ -30,10 +34,24 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
   currentUserId,
   hasReadReceipts,
   onUpgrade,
+  canUseGamePacks = false,
+  onUpgradeGames,
 }) => {
   const { showToast } = useToast();
   const [loadingWhatsApp, setLoadingWhatsApp] = useState(false);
-  const [tab, setTab] = useState<'chat' | 'profile'>('chat');
+  const [tab, setTab] = useState<'chat' | 'play' | 'profile'>('chat');
+  const [yourTurn, setYourTurn] = useState(0);
+
+  // How many game rounds are waiting on you, for the badge on Play.
+  useEffect(() => {
+    let active = true;
+    setYourTurn(0);
+    if (!matchItem || !isOpen) return;
+    api.getGames(matchItem.id).then((rounds) => active && setYourTurn(roundsWaitingOnMe(rounds)));
+    return () => {
+      active = false;
+    };
+  }, [matchItem?.id, isOpen, tab]);
 
   if (!matchItem) return null;
 
@@ -47,7 +65,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
       if (contact.allowWhatsApp && contact.whatsappNumber) {
         const cleaned = contact.whatsappNumber.replace(/[^0-9]/g, '');
-        const text = encodeURIComponent(`Hi ${profile.name}, we matched on ARROW.`);
+        const text = encodeURIComponent(`Hi ${profile.name}, we matched on Finderr.`);
         window.open(`https://wa.me/${cleaned}?text=${text}`, '_blank', 'noopener,noreferrer');
       } else {
         showToast(`${profile.name} has not shared a WhatsApp number.`, 'info');
@@ -99,7 +117,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
           className="flex p-1 bg-[var(--color-surface-subtle)] rounded-[var(--radius-input)] border border-[var(--color-border-subtle)]"
           role="tablist"
         >
-          {(['chat', 'profile'] as const).map((value) => (
+          {(['chat', 'play', 'profile'] as const).map((value) => (
             <button
               key={value}
               type="button"
@@ -112,8 +130,13 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                   : 'text-[var(--color-stone-dark)] hover:text-[var(--color-ink)]'
               }`}
             >
-              {value === 'chat' ? <MessageCircle size={13} /> : <User size={13} />}
-              {value === 'chat' ? 'Message' : 'Profile'}
+              {value === 'chat' ? <MessageCircle size={13} /> : value === 'play' ? <Gamepad2 size={13} /> : <User size={13} />}
+              {value === 'chat' ? 'Message' : value === 'play' ? 'Play' : 'Profile'}
+              {value === 'play' && yourTurn > 0 && tab !== 'play' && (
+                <span className="min-w-4 h-4 px-1 rounded-full bg-[var(--color-arrow-orange)] text-white text-[9px] leading-4 tracking-normal">
+                  {yourTurn}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -131,7 +154,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
             {profile.allowWhatsApp ? (
               <div className="p-3 bg-[var(--color-surface-subtle)] rounded-[var(--radius-card-sm)] border border-[var(--color-border-subtle)] space-y-2">
                 <p className="text-[11px] text-[var(--color-stone-dark)] leading-relaxed">
-                  {profile.name} is also open to WhatsApp. Moving off ARROW means sharing a
+                  {profile.name} is also open to WhatsApp. Moving off Finderr means sharing a
                   phone number, so it is worth talking here first.
                 </p>
                 <Button
@@ -154,6 +177,8 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               </div>
             ) : null}
           </div>
+        ) : tab === 'play' ? (
+          <GamesPanel match={matchItem} canUsePacks={canUseGamePacks} onUpgrade={onUpgradeGames} />
         ) : (
           <div className="space-y-4">
             {photo && (

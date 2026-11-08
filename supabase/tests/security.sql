@@ -1,5 +1,5 @@
 -- ==============================================================================
--- ARROW SECURITY TEST SUITE
+-- Finderr SECURITY TEST SUITE
 -- ==============================================================================
 -- Exercises the schema as three separate logged-in users and asserts that the
 -- authorization rules actually hold. Every test that represents an attack is
@@ -32,6 +32,23 @@ BEGIN
 END;
 $$;
 
+-- Build an end-to-end envelope between two users' current keys, the way the
+-- app does. The "ciphertext" is just encoded text — the database cannot tell
+-- the difference, which is exactly the point.
+CREATE OR REPLACE FUNCTION public.arrow_test_seal(p_from UUID, p_to UUID, p_text TEXT)
+RETURNS TEXT LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT 'e2e1.'
+    || (SELECT key_id FROM public.arrow_user_keys WHERE user_id = p_from AND retired_at IS NULL)
+    || '.'
+    || (SELECT key_id FROM public.arrow_user_keys WHERE user_id = p_to AND retired_at IS NULL)
+    || '.AAAAAAAAAAAAAAAA.'
+    || (SELECT CASE WHEN length(b) < 22 THEN rpad(b, 22, 'A') ELSE b END
+        FROM (SELECT translate(encode(convert_to(p_text, 'UTF8'), 'base64'), E'+/=\n', '-_') AS b) t);
+$$;
+
+CREATE OR REPLACE FUNCTION public.arrow_test_sealed(p_value TEXT)
+RETURNS BOOLEAN LANGUAGE sql AS $$ SELECT COALESCE(p_value LIKE 'e2e1.%', FALSE) $$;
+
 -- ------------------------------------------------------------------------------
 -- Fixtures: Ada and Blake match each other; Mallory is the attacker.
 -- ------------------------------------------------------------------------------
@@ -57,6 +74,13 @@ BEGIN
 
   INSERT INTO public.arrow_preferences (user_id) VALUES (ada), (blake), (mallory)
   ON CONFLICT (user_id) DO NOTHING;
+
+  -- Everyone has a secure chat key, as they would after first opening the app.
+  INSERT INTO public.arrow_user_keys (key_id, user_id, public_key, wrapped_key) VALUES
+    ('ada-key-0000000001', ada, '{"kty":"EC","crv":"P-256","x":"a","y":"a"}', '{}'),
+    ('blake-key-00000001', blake, '{"kty":"EC","crv":"P-256","x":"b","y":"b"}', '{}'),
+    ('mallory-key-000001', mallory, '{"kty":"EC","crv":"P-256","x":"m","y":"m"}', '{}')
+  ON CONFLICT (key_id) DO NOTHING;
 END $$;
 
 -- ==============================================================================
@@ -90,7 +114,7 @@ BEGIN
   WHERE user1_id = LEAST(ada, blake) AND user2_id = GREATEST(ada, blake);
 
   PERFORM public.arrow_test_assert(v_match_id IS NOT NULL,
-    'mutual arrows create exactly one match server-side');
+    'mutual sparks create exactly one match server-side');
 
   -- Direct table read as Mallory must expose nobody but Mallory.
   PERFORM public.arrow_test_login('33333333-3333-3333-3333-333333333333');
@@ -194,7 +218,7 @@ BEGIN
     VALUES (ada, mallory);
   EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
   PERFORM public.arrow_test_assert(v_failed,
-    'ATTACK BLOCKED: cannot forge an arrow from another user to yourself');
+    'ATTACK BLOCKED: cannot forge a spark from another user to yourself');
 
   v_failed := FALSE;
   BEGIN
@@ -416,7 +440,7 @@ DECLARE
   v_failed BOOLEAN;
   v_json JSONB;
 BEGIN
-  -- Fill the daily arrow budget with synthetic targets.
+  -- Fill the daily spark budget with synthetic targets.
   FOR i IN 1..(v_limit + 1) LOOP
     v_target := ('55555555-0000-0000-0000-' || lpad(i::TEXT, 12, '0'))::UUID;
     INSERT INTO auth.users (id, email, email_confirmed_at)
@@ -445,7 +469,7 @@ BEGIN
     );
   EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
   PERFORM public.arrow_test_assert(v_failed,
-    'ATTACK BLOCKED: the daily arrow limit stops mass-liking');
+    'ATTACK BLOCKED: the daily spark limit stops mass-liking');
 
   v_json := public.arrow_get_like_quota();
   PERFORM public.arrow_test_assert((v_json->>'arrowsRemaining')::INT = 0,
@@ -483,7 +507,7 @@ BEGIN
 
   PERFORM public.arrow_test_login(ada);
   SET LOCAL ROLE authenticated;
-  PERFORM public.arrow_send_message(v_match_id, 'Hey Blake, good to match.');
+  PERFORM public.arrow_send_message(v_match_id, public.arrow_test_seal(ada, blake, 'Hey Blake, good to match.'));
 
   v_failed := FALSE;
   BEGIN PERFORM public.arrow_send_message(v_match_id, '   ');
@@ -491,7 +515,7 @@ BEGIN
   PERFORM public.arrow_test_assert(v_failed, 'an empty message is rejected');
 
   v_failed := FALSE;
-  BEGIN PERFORM public.arrow_send_message(v_match_id, repeat('x', 2500));
+  BEGIN PERFORM public.arrow_send_message(v_match_id, public.arrow_test_seal(ada, blake, repeat('x', 9500)));
   EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
   PERFORM public.arrow_test_assert(v_failed, 'an oversized message is rejected');
   RESET ROLE;
@@ -632,7 +656,7 @@ BEGIN
          (dana, 'Dana', 'woman', 'Nairobi', '1997-06-06', TRUE)
   ON CONFLICT (id) DO NOTHING;
 
-  -- Cleo sends Ada an ordinary arrow; Dana sends a super arrow.
+  -- Cleo sends Ada an ordinary spark; Dana sends a super spark.
   PERFORM public.arrow_test_login(cleo);
   SET LOCAL ROLE authenticated;
   PERFORM public.arrow_like_profile(ada);
@@ -641,7 +665,7 @@ BEGIN
   BEGIN PERFORM public.arrow_like_profile(blake, TRUE, 'Hi there');
   EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
   PERFORM public.arrow_test_assert(v_failed,
-    'a note with a super arrow needs Plus');
+    'a note with a super spark needs Plus');
   RESET ROLE;
 
   PERFORM public.arrow_test_login(dana);
@@ -660,7 +684,7 @@ BEGIN
   PERFORM public.arrow_test_assert(
     jsonb_array_length(v_json->'entries') = 1
     AND (v_json->'entries'->0->'profile'->>'id')::UUID = dana,
-    'free reveals super arrows only');
+    'free reveals super sparks only');
   PERFORM public.arrow_test_assert(
     NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_json->'entries') e
                 WHERE (e->'profile'->>'id')::UUID = cleo),
@@ -668,7 +692,7 @@ BEGIN
 
   SELECT COUNT(*) INTO v_rows FROM public.arrow_likes WHERE to_user_id = ada;
   PERFORM public.arrow_test_assert(v_rows = 0,
-    'ATTACK BLOCKED: arrows pointed at you cannot be listed from the table');
+    'ATTACK BLOCKED: sparks pointed at you cannot be listed from the table');
   RESET ROLE;
 
   -- The webhook upgrades Ada to Plus.
@@ -758,7 +782,7 @@ BEGIN
 
   PERFORM public.arrow_test_login(blake);
   SET LOCAL ROLE authenticated;
-  v_msg_id := (public.arrow_send_message(v_match_id, 'Coffee this week?')->>'id')::UUID;
+  v_msg_id := (public.arrow_send_message(v_match_id, public.arrow_test_seal(blake, ada, 'Coffee this week?'))->>'id')::UUID;
   RESET ROLE;
 
   PERFORM public.arrow_test_login(ada);
@@ -809,7 +833,7 @@ BEGIN
   -- Ada is free: her own sent message shows no receipt.
   PERFORM public.arrow_test_login(ada);
   SET LOCAL ROLE authenticated;
-  PERFORM public.arrow_send_message(v_match_id, 'Yes!');
+  PERFORM public.arrow_send_message(v_match_id, public.arrow_test_seal(ada, blake, 'Yes!'));
   RESET ROLE;
   PERFORM public.arrow_test_login(blake);
   SET LOCAL ROLE authenticated;
@@ -975,7 +999,7 @@ BEGIN
 END $$;
 
 -- ==============================================================================
--- 16. Passed people come back; arrows sent do not
+-- 16. Passed people come back; sparks sent do not
 -- ==============================================================================
 \echo '16. Pass cooldown'
 
@@ -996,7 +1020,7 @@ BEGIN
   VALUES (pia, 'Pia', 'woman', 'Nairobi', '1996-02-02', TRUE, NOW()),
          (quin, 'Quin', 'woman', 'Nairobi', '1996-03-03', TRUE, NOW())
   ON CONFLICT (id) DO NOTHING;
-  -- Mallory's earlier arrow allowance is spent; let him swipe here.
+  -- Mallory's earlier spark allowance is spent; let him swipe here.
   DELETE FROM public.arrow_likes WHERE from_user_id = mallory;
 
   PERFORM public.arrow_test_login(mallory);
@@ -1020,7 +1044,7 @@ BEGIN
     'someone you passed on comes back after the cooldown');
   PERFORM public.arrow_test_assert(
     NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE (e->>'id')::UUID = quin),
-    'someone you sent an arrow to does not come back into the deck');
+    'someone you sent a spark to does not come back into the deck');
 
   -- Pass again, then bring everyone back at once.
   PERFORM public.arrow_pass_profile(pia);
@@ -1032,7 +1056,7 @@ BEGIN
     'clearing passes puts them straight back in the deck');
   PERFORM public.arrow_test_assert(
     EXISTS (SELECT 1 FROM public.arrow_likes WHERE from_user_id = mallory AND to_user_id = quin AND NOT is_pass),
-    'clearing passes keeps the arrows you sent');
+    'clearing passes keeps the sparks you sent');
   RESET ROLE;
 
   -- History lists who you swiped on, and only you.
@@ -1043,7 +1067,7 @@ BEGIN
   PERFORM public.arrow_test_assert(
     EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE (e->'profile'->>'id')::UUID = pia AND e->>'action' = 'pass')
     AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE (e->'profile'->>'id')::UUID = quin AND e->>'action' = 'arrow'),
-    'history lists people you passed on and people you sent arrows to');
+    'history lists people you passed on and people you sent sparks to');
   PERFORM public.arrow_test_assert(
     NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e WHERE e->'profile' ? 'whatsappNumber' OR e->'profile' ? 'dateOfBirth'),
     'ATTACK BLOCKED: history never carries a phone number or date of birth');
@@ -1064,9 +1088,9 @@ BEGIN
 END $$;
 
 -- ==============================================================================
--- 17. Unsending an arrow
+-- 17. Unsending a spark
 -- ==============================================================================
-\echo '17. Unsend arrow'
+\echo '17. Unsend spark'
 
 DO $$
 DECLARE
@@ -1097,15 +1121,15 @@ BEGIN
   PERFORM public.arrow_test_assert(
     EXISTS (SELECT 1 FROM jsonb_array_elements(public.arrow_get_received_likes()->'entries') e
             WHERE (e->'profile'->>'id')::UUID = rae),
-    'the arrow arrives before it is unsent');
+    'the spark arrives before it is unsent');
   RESET ROLE;
 
   PERFORM public.arrow_test_login(rae);
   SET LOCAL ROLE authenticated;
   v_json := public.arrow_unsend_arrow(sol);
-  PERFORM public.arrow_test_assert((v_json->>'success')::BOOLEAN, 'an arrow can be unsent');
+  PERFORM public.arrow_test_assert((v_json->>'success')::BOOLEAN, 'a spark can be unsent');
   PERFORM public.arrow_test_assert((public.arrow_get_like_quota()->>'arrowsUsed')::INT = v_used_before,
-    'ATTACK BLOCKED: an unsent arrow still counts towards the daily limit');
+    'ATTACK BLOCKED: an unsent spark still counts towards the daily limit');
   RESET ROLE;
 
   PERFORM public.arrow_test_login(sol);
@@ -1113,12 +1137,12 @@ BEGIN
   PERFORM public.arrow_test_assert(
     NOT EXISTS (SELECT 1 FROM jsonb_array_elements(public.arrow_get_received_likes()->'entries') e
                 WHERE (e->'profile'->>'id')::UUID = rae),
-    'an unsent arrow disappears from their likes');
-  -- Sol likes Rae: no match, because Rae's arrow is gone.
+    'an unsent spark disappears from their likes');
+  -- Sol likes Rae: no match, because Rae's spark is gone.
   PERFORM public.arrow_like_profile(rae);
   PERFORM public.arrow_test_assert(
     NOT EXISTS (SELECT 1 FROM public.arrow_matches WHERE user1_id = LEAST(rae, sol) AND user2_id = GREATEST(rae, sol)),
-    'an unsent arrow cannot complete a match');
+    'an unsent spark cannot complete a match');
   RESET ROLE;
 
   -- Once matched, unsend refuses.
@@ -1127,12 +1151,323 @@ BEGIN
   PERFORM public.arrow_like_profile(sol);
   v_json := public.arrow_unsend_arrow(sol);
   PERFORM public.arrow_test_assert((v_json->>'success')::BOOLEAN IS FALSE,
-    'an arrow that became a match cannot be unsent');
+    'a spark that became a match cannot be unsent');
   RESET ROLE;
 END $$;
 
+-- ==============================================================================
+-- 18. Secure chat keys
+-- ==============================================================================
+\echo '18. Secure chat keys'
+
+DO $$
+DECLARE
+  ivy UUID := 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  jon UUID := 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+  kit UUID := '99999999-9999-9999-9999-999999999999';
+  v_x TEXT := repeat('A', 43);
+  v_wrap JSONB := jsonb_build_object('salt', repeat('S', 22), 'iv', repeat('I', 16), 'ct', repeat('C', 60), 'iter', 600000);
+  v_json JSONB;
+  v_failed BOOLEAN;
+  v_match_id UUID;
+BEGIN
+  INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+    (ivy, 'ivy@example.test', NOW()), (jon, 'jon@example.test', NOW()), (kit, 'kit@example.test', NOW())
+  ON CONFLICT (id) DO NOTHING;
+  INSERT INTO public.arrow_profiles (id, name, gender, location, date_of_birth, is_verified_adult, last_active_at)
+  VALUES (ivy, 'Ivy', 'woman', 'Nakuru', '1968-02-02', TRUE, NOW()),
+         (jon, 'Jon', 'man', 'Nakuru', '1965-03-03', TRUE, NOW()),
+         (kit, 'Kit', 'man', 'Nakuru', '1990-04-04', TRUE, NOW())
+  ON CONFLICT (id) DO NOTHING;
+
+  PERFORM public.arrow_test_login(ivy);
+  SET LOCAL ROLE authenticated;
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_set_my_key('ivy-key-0000000001',
+    jsonb_build_object('kty', 'EC', 'crv', 'P-256', 'x', v_x, 'y', v_x, 'd', v_x), v_wrap);
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'ATTACK BLOCKED: a private key (d) is never accepted as a public key');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_set_my_key('ivy-key-0000000001',
+    jsonb_build_object('kty', 'EC', 'crv', 'P-256', 'x', v_x, 'y', v_x),
+    v_wrap || jsonb_build_object('iter', 1000));
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'a passcode wrap with too few iterations is refused');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_set_ask_first(ARRAY['What is your favourite meal?']);
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'questions need a secure chat key, or the answers could never be opened');
+
+  PERFORM public.arrow_set_my_key('ivy-key-0000000001',
+    jsonb_build_object('kty', 'EC', 'crv', 'P-256', 'x', v_x, 'y', v_x, 'extra', 'smuggled'), v_wrap);
+  v_json := public.arrow_set_my_key('ivy-key-0000000002',
+    jsonb_build_object('kty', 'EC', 'crv', 'P-256', 'x', v_x, 'y', v_x), v_wrap);
+  PERFORM public.arrow_test_assert(v_json->>'keyId' = 'ivy-key-0000000002',
+    'a new key becomes the current one');
+  PERFORM public.arrow_test_assert(NOT (v_json->'publicKey' ? 'extra'),
+    'only the four public-key fields are stored');
+
+  v_json := public.arrow_get_public_keys(ivy);
+  PERFORM public.arrow_test_assert(
+    jsonb_array_length(v_json) = 2
+      AND (SELECT COUNT(*) FROM jsonb_array_elements(v_json) e WHERE (e->>'current')::BOOLEAN) = 1,
+    'a reset retires the old key and keeps its public half for old messages');
+
+  v_failed := FALSE;
+  BEGIN PERFORM COUNT(*) FROM public.arrow_user_keys;
+  EXCEPTION WHEN insufficient_privilege THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'ATTACK BLOCKED: the key table cannot be read directly');
+  RESET ROLE;
+
+  -- Jon and Kit set up secure chat too.
+  PERFORM public.arrow_test_login(jon);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_set_my_key('jon-key-0000000001',
+    jsonb_build_object('kty', 'EC', 'crv', 'P-256', 'x', v_x, 'y', v_x), v_wrap);
+  RESET ROLE;
+  PERFORM public.arrow_test_login(kit);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_set_my_key('kit-key-0000000001',
+    jsonb_build_object('kty', 'EC', 'crv', 'P-256', 'x', v_x, 'y', v_x), v_wrap);
+  PERFORM public.arrow_test_assert(
+    NOT ((public.arrow_get_my_key())->>'keyId' = 'ivy-key-0000000002'),
+    'your own key call can only ever return your own key');
+  RESET ROLE;
+
+  -- Once Ivy blocks Kit, Kit cannot even fetch her public keys.
+  PERFORM public.arrow_test_login(ivy);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_block_user(kit);
+  RESET ROLE;
+  PERFORM public.arrow_test_login(kit);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_test_assert(jsonb_array_length(public.arrow_get_public_keys(ivy)) = 0,
+    'ATTACK BLOCKED: a blocked user cannot look up your keys');
+  RESET ROLE;
+END $$;
+
+-- ==============================================================================
+-- 19. Ask me first
+-- ==============================================================================
+\echo '19. Ask me first'
+
+DO $$
+DECLARE
+  ivy UUID := 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  jon UUID := 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+  v_json JSONB;
+  v_failed BOOLEAN;
+BEGIN
+  PERFORM public.arrow_test_login(ivy);
+  SET LOCAL ROLE authenticated;
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_set_ask_first(ARRAY['One?', 'Two?', 'Three?', 'Four?']);
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed, 'no more than three questions');
+
+  v_json := public.arrow_set_ask_first(ARRAY['  What does a good Sunday look like?  ', '', 'Tea or coffee?']);
+  PERFORM public.arrow_test_assert(v_json->'askFirst' = '["What does a good Sunday look like?", "Tea or coffee?"]'::jsonb,
+    'questions are trimmed and blanks dropped');
+  RESET ROLE;
+
+  PERFORM public.arrow_test_login(jon);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.arrow_test_assert(
+    (public.arrow_get_profile(ivy)->'askFirst') ? 'Tea or coffee?'
+      AND (public.arrow_get_profile(ivy)->>'secureChat')::BOOLEAN,
+    'her questions show on her profile');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_like_profile(ivy, TRUE);
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed, 'a spark without answers is refused');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_like_profile(ivy, TRUE, NULL, 'Sunday: church then lunch. Tea.');
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'ATTACK BLOCKED: plaintext answers are refused, never stored');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_like_profile(ivy, TRUE, NULL,
+    'e2e1.jon-key-0000000001.ivy-key-0000000001.AAAAAAAAAAAAAAAA.' || repeat('Z', 30));
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'answers written to her retired key are refused (she could not open them)');
+
+  PERFORM public.arrow_like_profile(ivy, TRUE, NULL, public.arrow_test_seal(jon, ivy, 'Sunday answers'));
+  PERFORM public.arrow_test_assert(
+    public.arrow_test_sealed((public.arrow_get_sent_likes()->0->>'answers')),
+    'the sender can see their own encrypted answers');
+  RESET ROLE;
+
+  PERFORM public.arrow_test_login(ivy);
+  SET LOCAL ROLE authenticated;
+  v_json := public.arrow_get_received_likes();
+  PERFORM public.arrow_test_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v_json->'entries') e
+            WHERE (e->'profile'->>'id')::UUID = jon AND public.arrow_test_sealed(e->>'answers')),
+    'she receives the answers, still encrypted');
+
+  PERFORM public.arrow_set_ask_first('{}');
+  -- Matching back: Jon asks nothing, so no answers are needed or stored.
+  v_json := public.arrow_like_profile(jon, FALSE, NULL, 'ignored');
+  PERFORM public.arrow_test_assert((v_json->>'isMatch')::BOOLEAN, 'answering a spark makes a match');
+  PERFORM public.arrow_test_assert(
+    (SELECT answers FROM public.arrow_likes WHERE from_user_id = ivy AND to_user_id = jon) IS NULL,
+    'answers are dropped when the other person asked nothing');
+  v_json := public.arrow_get_matches();
+  PERFORM public.arrow_test_assert(
+    public.arrow_test_sealed(v_json->0->>'theirAnswers') AND v_json->0->>'myAnswers' IS NULL,
+    'the match carries the answers each way');
+  RESET ROLE;
+END $$;
+
+-- ==============================================================================
+-- 20. End-to-end messages and date games
+-- ==============================================================================
+\echo '20. Encrypted chat and date games'
+
+DO $$
+DECLARE
+  ivy UUID := 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  jon UUID := 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+  mallory UUID := '33333333-3333-3333-3333-333333333333';
+  v_match_id UUID;
+  v_game JSONB;
+  v_game_id UUID;
+  v_json JSONB;
+  v_failed BOOLEAN;
+BEGIN
+  SELECT id INTO v_match_id FROM public.arrow_matches
+  WHERE user1_id = LEAST(ivy, jon) AND user2_id = GREATEST(ivy, jon);
+
+  PERFORM public.arrow_test_login(jon);
+  SET LOCAL ROLE authenticated;
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_send_message(v_match_id, 'plain hello');
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'ATTACK BLOCKED: a plaintext message is refused, never stored');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_send_message(v_match_id, public.arrow_test_seal(mallory, ivy, 'spoofed'));
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'ATTACK BLOCKED: a message under someone else''s key is refused');
+
+  PERFORM public.arrow_send_message(v_match_id, public.arrow_test_seal(jon, ivy, 'Hello Ivy'));
+  PERFORM public.arrow_test_assert(
+    public.arrow_test_sealed(public.arrow_get_messages(v_match_id)->0->>'body'),
+    'messages are stored and served encrypted');
+
+  -- Games.
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_start_game(v_match_id, 'pick', 'deep');
+  EXCEPTION WHEN OTHERS THEN v_failed := (SQLSTATE = 'P0402'); END;
+  PERFORM public.arrow_test_assert(v_failed, 'Deep Talk needs Plus');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_start_game(v_match_id, 'pick', 'starter', NULL, public.arrow_test_seal(jon, ivy, '0'));
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed, 'a dealt card cannot be pre-answered by the starter');
+
+  v_game := public.arrow_start_game(v_match_id, 'pick');
+  v_game_id := (v_game->>'id')::UUID;
+  PERFORM public.arrow_test_assert(
+    v_game->>'prompt' IS NOT NULL AND jsonb_array_length(v_game->'options') = 2,
+    'the server deals a card from its own deck');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_answer_game(v_game_id, '0');
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'ATTACK BLOCKED: a plaintext game answer is refused');
+
+  PERFORM public.arrow_answer_game(v_game_id, public.arrow_test_seal(jon, ivy, '0'));
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_answer_game(v_game_id, public.arrow_test_seal(jon, ivy, '1'));
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed, 'an answer cannot be changed once given');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_start_game(v_match_id, 'truths');
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed, 'two truths and a lie needs the statements');
+
+  PERFORM public.arrow_start_game(v_match_id, 'truths', 'starter',
+    public.arrow_test_seal(jon, ivy, 'three statements'), public.arrow_test_seal(jon, ivy, '2'));
+
+  v_failed := FALSE;
+  BEGIN PERFORM COUNT(*) FROM public.arrow_game_answers;
+  EXCEPTION WHEN insufficient_privilege THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed,
+    'ATTACK BLOCKED: game answers cannot be read straight off the table');
+  RESET ROLE;
+
+  PERFORM public.arrow_test_login(ivy);
+  SET LOCAL ROLE authenticated;
+  v_json := public.arrow_get_games(v_match_id);
+  PERFORM public.arrow_test_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e
+            WHERE (e->>'id')::UUID = v_game_id
+              AND (e->>'theyAnswered')::BOOLEAN AND e->>'theirAnswer' IS NULL),
+    'SEALED: you see that they answered, not what, until you answer');
+  PERFORM public.arrow_test_assert(
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v_json) e
+            WHERE e->>'kind' = 'truths' AND e->>'setup' IS NOT NULL AND e->>'theirAnswer' IS NULL),
+    'SEALED: the lie stays hidden until you guess');
+
+  v_json := public.arrow_answer_game(v_game_id, public.arrow_test_seal(ivy, jon, '1'));
+  PERFORM public.arrow_test_assert(public.arrow_test_sealed(v_json->>'theirAnswer'),
+    'answering reveals their answer');
+  RESET ROLE;
+
+  PERFORM public.arrow_test_login(mallory);
+  SET LOCAL ROLE authenticated;
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_get_games(v_match_id);
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed, 'ATTACK BLOCKED: cannot list another couple''s games');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_start_game(v_match_id, 'ask');
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed, 'ATTACK BLOCKED: cannot start a game in another match');
+
+  v_failed := FALSE;
+  BEGIN PERFORM public.arrow_answer_game(v_game_id, public.arrow_test_seal(mallory, ivy, '0'));
+  EXCEPTION WHEN OTHERS THEN v_failed := TRUE; END;
+  PERFORM public.arrow_test_assert(v_failed, 'ATTACK BLOCKED: cannot answer in another match');
+  RESET ROLE;
+
+  -- Plus unlocks the other packs.
+  PERFORM public.arrow_apply_card_subscription(jon, 'plus', 'active', NOW() + INTERVAL '30 days', 'CUS_jon', 'SUB_jon', 'tok_jon');
+  PERFORM public.arrow_test_login(jon);
+  SET LOCAL ROLE authenticated;
+  v_game := public.arrow_start_game(v_match_id, 'ask', 'future');
+  PERFORM public.arrow_test_assert(v_game->>'pack' = 'future' AND v_game->>'prompt' IS NOT NULL,
+    'Plus can play Future Us');
+
+  -- A block wipes the match, and every game with it.
+  PERFORM public.arrow_block_user(ivy);
+  RESET ROLE;
+  PERFORM public.arrow_test_assert(
+    NOT EXISTS (SELECT 1 FROM public.arrow_games WHERE match_id = v_match_id),
+    'blocking deletes the couple''s games');
+END $$;
+
 \echo ''
-\echo 'All ARROW security tests passed.'
+\echo 'All Finderr security tests passed.'
 
 -- ==============================================================================
 -- Fixture cleanup
@@ -1150,3 +1485,5 @@ END $$;
 
 DROP FUNCTION IF EXISTS public.arrow_test_login(UUID);
 DROP FUNCTION IF EXISTS public.arrow_test_assert(BOOLEAN, TEXT);
+DROP FUNCTION IF EXISTS public.arrow_test_seal(UUID, UUID, TEXT);
+DROP FUNCTION IF EXISTS public.arrow_test_sealed(TEXT);

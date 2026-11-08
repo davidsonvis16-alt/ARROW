@@ -30,6 +30,7 @@ export const FREE_PLAN: PlanInfo = {
     readReceipts: false,
     incognito: false,
     boost: false,
+    gamePacks: false,
   },
   boostActiveUntil: null,
   boostsRemaining: 0,

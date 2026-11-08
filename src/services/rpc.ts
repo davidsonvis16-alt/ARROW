@@ -15,7 +15,7 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   '42501': 'That is not available to you.',
   '53400': 'You have hit a limit. Try again a little later.',
   '22023': 'That value was not accepted.',
-  'P0402': 'That is part of an ARROW membership.',
+  'P0402': 'That is part of an Finderr membership.',
 };
 
 /** Raised by the schema when a feature needs a higher plan. */
@@ -67,7 +67,7 @@ export async function rpcSafe<T>(fn: string, args: Record<string, unknown> = {},
     const result = await rpc<T>(fn, args);
     return (result ?? fallback) as T;
   } catch (err) {
-    console.warn(`[arrow] ${fn} failed`, err);
+    console.warn(`[spark] ${fn} failed`, err);
     return fallback;
   }
 }
